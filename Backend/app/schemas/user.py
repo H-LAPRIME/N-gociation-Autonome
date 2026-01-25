@@ -26,7 +26,8 @@ class User(BaseModel):
     email: EmailStr
     full_name: str
     phone_number: Optional[str]
-    city: str = "Casablanca" # Crucial for car location/availability
+    city: str = "Casablanca"
+    income: float
     
     financials: Financials
     preferences: Preferences
@@ -34,27 +35,3 @@ class User(BaseModel):
     
     class Config:
         from_attributes = True
-        json_schema_extra = {
-            "example": {
-                "user_id": 1,
-                "username": "moustapha_dev",
-                "email": "moustapha@omega.ma",
-                "full_name": "Moustapha OMEGA",
-                "phone_number": "0661234567",
-                "city": "Marrakech",
-                "financials": {
-                    "max_budget_mad": 250000.0,
-                    "preferred_payment": "Credit",
-                    "monthly_limit_mad": 3500.0,
-                    "has_down_payment": True
-                },
-                "preferences": {
-                    "brands": ["Dacia", "Renault", "Hyundai"],
-                    "category": "SUV",
-                    "fuel_type": "Diesel",
-                    "transmission": "Manuelle",
-                    "is_imported": False
-                },
-                "risk_level": "moderate"
-            }
-        }

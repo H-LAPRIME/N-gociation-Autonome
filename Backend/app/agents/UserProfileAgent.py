@@ -7,13 +7,11 @@
 # 2. Implement risk_assessment() method to calculate debt-to-income ratio.
 # 3. Output should be a RiskProfile object (Low, Medium, High).
 
-from typing import Dict, Any
+from app.agents.base import BaseOmegaAgent
 
-class UserProfileAgent:
+class UserProfileAgent(BaseOmegaAgent):
     def __init__(self):
-        # Initialize Agno agent config here
-        pass
-
-    async def get_risk_profile(self, user_id: str) -> Dict[str, Any]:
-        # Implement logic for fetching data from bank_api and calculating risk
-        return {}
+        super().__init__(
+            name="ProfileAgent",
+            instructions=[""]
+        )
