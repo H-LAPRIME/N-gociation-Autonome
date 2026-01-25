@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OMEGA | Orchestration Intégrale Agno</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #020617;
+            --surface: rgba(15, 23, 42, 0.96);
+            --border: rgba(255, 255, 255, 0.12);
+            --primary: #38bdf8;
+            --secondary: #22d3ee;
+            --accent-green: #4ade80;
+            --accent-amber: #fbbf24;
+            --accent-purple: #c084fc;
+            --accent-rose: #f43f5e;
+            --text-main: #f8fafc;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 50% -20%, rgba(56, 189, 248, 0.3), transparent),
+                linear-gradient(rgba(15, 23, 42, 0.5) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(15, 23, 42, 0.5) 1px, transparent 1px);
+            background-size: 100% 100%, 50px 50px, 50px 50px;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-family: 'Orbitron';
+            color: var(--primary);
+            letter-spacing: 4px;
+            font-size: 2.2rem;
+            margin-top: 15px;
+        }
+
+        .subtitle {
+            color: #64748b;
+            font-size: 0.9rem;
+            margin-bottom: 25px;
+        }
+
+        /* Visualization Area */
+        #visualizer {
+            position: relative;
+            width: 1200px;
+            height: 750px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 30px;
+            overflow: hidden;
+            box-shadow: 0 0 120px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(40px);
+        }
+
+        svg#svg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .path {
+            fill: none;
+            stroke: var(--border);
+            stroke-width: 2.5;
+            transition: all 0.6s ease;
+            stroke-linecap: round;
+        }
+
+        .path.active-path {
+            stroke: rgba(56, 189, 248, 0.4);
+            filter: drop-shadow(0 0 8px var(--primary));
+        }
+
+        .pulse {
+            stroke: var(--primary);
+            stroke-width: 5;
+            stroke-dasharray: 10, 150;
+            stroke-linecap: round;
+            filter: drop-shadow(0 0 12px var(--primary));
+            animation: multiple-packets 6s linear infinite;
+            display: none;
+        }
+
+        .tool-pulse {
+            stroke: var(--accent-green);
+            stroke-width: 4;
+            stroke-dasharray: 6, 25;
+            filter: drop-shadow(0 0 10px var(--accent-green));
+            animation: multiple-packets 1s linear reverse infinite;
+            display: none;
+        }
+
+        .return-pulse {
+            stroke: var(--accent-amber);
+            stroke-width: 5;
+            stroke-dasharray: 10, 150;
+            filter: drop-shadow(0 0 12px var(--accent-amber));
+            animation: multiple-packets 7s linear infinite;
+            display: none;
+        }
+
+        .reply-pulse {
+            stroke: var(--accent-green);
+            stroke-width: 7;
+            stroke-dasharray: 15, 200;
+            filter: drop-shadow(0 0 18px var(--accent-green));
+            animation: multiple-packets 5s linear infinite;
+            display: none;
+        }
+
+        @keyframes multiple-packets {
+            from {
+                stroke-dashoffset: 2000;
+            }
+
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+
+
+        /* Nodes */
+        .node {
+            position: absolute;
+            width: 210px;
+            padding: 18px;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            z-index: 10;
+            transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+
+        .node.active {
+            border-color: var(--primary);
+            transform: scale(1.06);
+            box-shadow: 0 0 40px rgba(56, 189, 248, 0.5);
+            animation: node-pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+        }
+
+        @keyframes node-pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 40px rgba(56, 189, 248, 0.5);
+            }
+
+            50% {
+                box-shadow: 0 0 60px rgba(56, 189, 248, 0.8);
+            }
+        }
+
+        .node.skipped {
+            opacity: 0.2;
+            transform: scale(0.92);
+            filter: grayscale(1);
+        }
+
+        .node h4 {
+            font-family: 'Orbitron';
+            font-size: 0.8rem;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .node p {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            line-height: 1.4;
+        }
+
+        .node .badge {
+            font-size: 0.65rem;
+            margin-top: 10px;
+            font-weight: bold;
+            color: var(--accent-amber);
+            text-transform: uppercase;
+        }
+
+        /* Tools */
+        .tool {
+            position: absolute;
+            width: 100px;
+            padding: 10px;
+            background: #000;
+            border: 1px solid var(--accent-green);
+            border-radius: 10px;
+            font-size: 0.65rem;
+            color: var(--accent-green);
+            text-align: center;
+            opacity: 0;
+            transition: 0.4s;
+            z-index: 5;
+
+        }
+
+        .tool.active {
+            opacity: 1;
+            transform: translateY(-8px);
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+        }
+
+        /* Layout Positions */
+        #node-user {
+            top: 40px;
+            left: 60px;
+            border-width: 2px;
+        }
+
+        #node-orch {
+            top: 350px;
+            left: 60px;
+            width: 250px;
+            border-color: var(--accent-amber);
+        }
+
+        #node-p1 {
+            top: 60px;
+            left: 520px;
+        }
+
+        #node-p2 {
+            top: 350px;
+            left: 520px;
+        }
+
+        #node-p3 {
+            top: 640px;
+            left: 520px;
+        }
+
+        #node-nego {
+            top: 350px;
+            left: 930px;
+            border-color: var(--accent-purple);
+        }
+
+        #node-offer {
+            top: 640px;
+            left: 930px;
+            border-color: var(--accent-rose);
+        }
+
+        /* Tool positions */
+        .t-p1 {
+            top: 40px;
+            left: 755px;
+        }
+
+        .t-p2 {
+            top: 330px;
+            left: 755px;
+        }
+
+        .t-p3 {
+            top: 620px;
+            left: 755px;
+        }
+
+        /* Terminal Decor */
+        #terminal {
+            width: 1200px;
+            height: 160px;
+            background: #000;
+            border-radius: 18px;
+            margin-top: 20px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: #10b981;
+            overflow-y: auto;
+            border: 1px solid #111;
+            box-shadow: inset 0 0 30px rgba(0, 0, 0, 1);
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-left: 2px solid #222;
+            padding-left: 12px;
+        }
+
+        .log-tag {
+            font-weight: bold;
+            margin-right: 12px;
+            font-size: 0.8rem;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        button {
+            padding: 14px 28px;
+            border-radius: 14px;
+            border: none;
+            cursor: pointer;
+            font-family: 'Orbitron';
+            font-size: 0.8rem;
+            font-weight: 900;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-blue {
+            background: var(--primary);
+            color: #000;
+        }
+
+        .btn-amber {
+            background: var(--accent-amber);
+            color: #000;
+        }
+
+        button:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
+            filter: brightness(1.2);
+        }
+
+        /* User Response View */
+        #ui-response {
+            position: absolute;
+            top: 160px;
+            left: 60px;
+            width: 250px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 2px dashed var(--accent-green);
+            padding: 20px;
+            border-radius: 15px;
+            opacity: 0;
+            transition: 0.6s ease-out;
+            color: var(--accent-green);
+            font-size: 0.85rem;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        #ui-response.show {
+            opacity: 1;
+            transform: translateY(15px);
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>OMEGA : ORCHESTRATION AGENTIQUE V5</h1>
+    <p class="subtitle">Fusion Routage Intelligent + Cycle Bidirectionnel (Offer -> Orchestrator -> Client).</p>
+
+    <div id="visualizer">
+        <svg id="svg-layer">
+            <!-- 1. START: User -> Orch -->
+            <path id="path-u-o" class="path" d="M 165,110 L 165,350" />
+            <path id="pulse-u-o" class="path pulse" d="M 165,110 L 165,350" />
+
+            <!-- 2. ROUTING: Orch -> P1, P2, P3 -->
+            <path id="path-o-p1" class="path" d="M 310,380 L 520,130" />
+            <path id="path-o-p2" class="path" d="M 310,390 L 520,390" />
+            <path id="path-o-p3" class="path" d="M 310,400 L 520,660" />
+
+            <path id="pulse-o-p1" class="path pulse" d="M 310,380 L 520,130" />
+            <path id="pulse-o-p2" class="path pulse" d="M 310,390 L 520,390" />
+            <path id="pulse-o-p3" class="path pulse" d="M 310,400 L 520,660" />
+
+            <!-- 3. HANDSHAKES: Agent <-> Tool -->
+            <path id="hs-p1" class="path tool-pulse" d="M 730,100 L 755,70" />
+            <path id="hs-p2" class="path tool-pulse" d="M 730,390 L 755,360" />
+            <path id="hs-p3" class="path tool-pulse" d="M 730,680 L 755,650" />
+
+            <!-- 4. AGGREGATION: Agents -> Nego -->
+            <path id="path-p1-n" class="path" d="M 730,120 L 930,360" />
+            <path id="path-p2-n" class="path" d="M 730,390 L 930,390" />
+            <path id="path-p3-n" class="path" d="M 730,670 L 930,420" />
+
+            <path id="pulse-p1-n" class="path pulse" d="M 730,120 L 930,360" />
+            <path id="pulse-p2-n" class="path pulse" d="M 730,390 L 930,390" />
+            <path id="pulse-p3-n" class="path pulse" d="M 730,670 L 930,420" />
+
+            <!-- 5. FINAL: Nego -> Offer -->
+            <path id="path-n-of" class="path" d="M 1035,460 L 1035,640" />
+            <path id="pulse-n-of" class="path pulse" d="M 1035,460 L 1035,640" />
+
+            <!-- 6. RETURN: Offer -> Orchestrator (Feedback loop) -->
+            <path id="path-ret" class="path" d="M 930,700 L 100,700 L 100,500" />
+            <path id="pulse-ret" class="path return-pulse" d="M 930,700 L 100,700 L 100,500" />
+
+            <!-- 7. END: Orch -> User Reply (Direct flow from Orch back to User) -->
+            <path id="path-rep" class="path" d="M 210,350 L 210,250 L 100,250 L 100,110" />
+            <path id="pulse-rep" class="path reply-pulse" d="M 210,350 L 210,250 L 100,250 L 100,110" />
+        </svg>
+
+        <div id="node-user" class="node">
+            <h4>INTERFACE CLIENT</h4>
+            <p id="user-msg">"En attente de votre demande..."</p>
+        </div>
+
+        <div id="ui-response">
+            <b>RÉPONSE AGENTIQUE</b><br><span id="resp-txt">...</span>
+        </div>
+
+        <div id="node-orch" class="node">
+            <h4>ORCHESTRATEUR</h4>
+            <p>Intelligence de routage & Synthèse.</p>
+            <div id="orch-mode" class="badge">STANDBY</div>
+        </div>
+
+        <!-- Data Agents -->
+        <div id="node-p1" class="node">
+            <h4>P1: PROFIL</h4>
+            <p>Risque & Budget</p>
+        </div>
+        <div id="tool-p1" class="tool t-p1">Bank API</div>
+
+        <div id="node-p2" class="node">
+            <h4>P2: VALUATION</h4>
+            <p>Argus Dynamique</p>
+        </div>
+        <div id="tool-p2" class="tool t-p2">Car Scraper</div>
+
+        <div id="node-p3" class="node">
+            <h4>P3: MARCHÉ</h4>
+            <p>Inventaire SQL</p>
+        </div>
+        <div id="tool-p3" class="tool t-p3">Stock DB</div>
+
+        <!-- Decision Agents -->
+        <div id="node-nego" class="node">
+            <h4>P4: NÉGOCIATION</h4>
+            <p>Equilibre Satisfaction</p>
+        </div>
+        <div id="node-offer" class="node">
+            <h4>P5: OFFRE (BIZ)</h4>
+            <p>Contrat & Marges</p>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-blue" onclick="execSim('full')">Scénario 1 : Flux Complet (Complexe)</button>
+        <button class="btn-amber" onclick="execSim('partial')">Scénario 2 : Routage Sélectif (Simple)</button>
+    </div>
+
+    <div id="terminal"></div>
+
+    <script>
+        const term = document.getElementById('terminal');
+        const nodes = document.querySelectorAll('.node');
+        const tools = document.querySelectorAll('.tool');
+        const pulses = document.querySelectorAll('.pulse');
+
+        const returnPulse = document.getElementById('pulse-ret');
+        const replyPulse = document.getElementById('pulse-rep');
+        const uiResp = document.getElementById('ui-response');
+        const orchBadge = document.getElementById('orch-mode');
+
+        function log(tag, msg, color = '#10b981') {
+            const wrap = document.createElement('div');
+            wrap.className = 'log-entry';
+            wrap.innerHTML = `<span class="log-tag" style="color:${color}">${tag}</span> ${msg}`;
+            term.appendChild(wrap);
+            term.scrollTop = term.scrollHeight;
+        }
+
+        async function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+        function setPulse(id, state) {
+            const pulse = document.getElementById(id);
+            const pathId = id.replace('pulse', 'path');
+            const path = document.getElementById(pathId);
+            if (pulse) pulse.style.display = state ? 'block' : 'none';
+            if (path) {
+                if (state) path.classList.add('active-path');
+                else path.classList.remove('active-path');
+            }
+        }
+
+        async function execSim(mode) {
+            // Reset
+            nodes.forEach(n => { n.classList.remove('active'); n.classList.remove('skipped'); });
+            tools.forEach(t => t.classList.remove('active'));
+            pulses.forEach(p => p.style.display = 'none');
+            document.querySelectorAll('.path').forEach(p => p.classList.remove('active-path'));
+            document.querySelectorAll('.tool-pulse').forEach(hs => hs.style.display = 'none');
+            returnPulse.style.display = 'none';
+            replyPulse.style.display = 'none';
+            uiResp.classList.remove('show');
+            terminal.innerHTML = '';
+            orchBadge.innerHTML = "ANALYSE...";
+
+            if (mode === 'full') {
+                document.getElementById('user-msg').innerHTML = "Je veux échanger ma BMW 2022 contre un SUV neuf.";
+                log('USER', "Requête complexe détectée : nécessite Profil, Valuation et Marché.", '#fff');
+            } else {
+                document.getElementById('user-msg').innerHTML = "Quel est le prix actuel de ma BMW 2022 ?";
+                log('USER', "Requête simple détectée : seule l'estimation est requise.", '#fff');
+            }
+
+            // 1. User to Orch
+            document.getElementById('node-user').classList.add('active');
+            setPulse('pulse-u-o', true);
+            await wait(2000);
+
+            // 2. Orchestration Decision
+            document.getElementById('node-orch').classList.add('active');
+            log('ORCHESTRATEUR', mode === 'full' ? "Intention: Transac. Déploiement MULTI-AGENTS." : "Intention: Info. Routage SÉLECTIF (P2 uniquement).", 'var(--accent-amber)');
+            await wait(1500);
+
+            let activePhases = [];
+            if (mode === 'full') {
+                orchBadge.innerHTML = "FULL_SCAN";
+                activePhases = ['p1', 'p2', 'p3'];
+                setPulse('pulse-o-p1', true);
+                setPulse('pulse-o-p2', true);
+                setPulse('pulse-o-p3', true);
+            } else {
+                orchBadge.innerHTML = "SMART_ROUTING";
+                activePhases = ['p2'];
+                document.getElementById('node-p1').classList.add('skipped');
+                document.getElementById('node-p3').classList.add('skipped');
+                setPulse('pulse-o-p2', true);
+            }
+            await wait(1200);
+
+            // 3. Agent Execution + Tools
+            for (let p of activePhases) {
+                const node = document.getElementById('node-' + p);
+                const tool = document.getElementById('tool-' + p);
+                const hs = document.getElementById('hs-' + p);
+
+                node.classList.add('active');
+                tool.classList.add('active');
+                if (hs) hs.style.display = 'block';
+                log(p.toUpperCase(), `Appel de l'outil métier. Analyse JSON en cours...`);
+                await wait(1200);
+            }
+
+            // 4. Aggregate
+            log('SYSTEM', "Synchronisation des agents vers le moteur de négociation.");
+            activePhases.forEach(p => setPulse(`pulse-${p}-n`, true));
+            await wait(1500);
+
+            // 5. Nego & Offer
+            document.getElementById('node-nego').classList.add('active');
+            log('NÉGO', "Calcul de l'utilité métier Agno. Recherche du meilleur compromis.");
+            await wait(1500);
+
+            setPulse('pulse-n-of', true);
+            document.getElementById('node-offer').classList.add('active');
+            log('OFFRE/BIZ', "Génération et validation de l'offre finale.");
+            await wait(2000);
+
+            // 6. RETURN TO ORCHESTRATOR
+            log('INFO', "Retour de l'offre à l'Orchestrateur pour validation finale.", 'var(--accent-amber)');
+            setPulse('pulse-ret', true);
+            await wait(2500);
+
+            log('ORCHESTRATEUR', "Offre reçue et validée. Préparation du message client.", 'var(--accent-amber)');
+            orchBadge.innerHTML = "FINALIZING...";
+            await wait(1000);
+
+            // 7. FINAL REPLY
+            log('SYSTEM', "Envoi de la réponse à l'utilisateur.", 'var(--accent-green)');
+            setPulse('pulse-rep', true);
+            await wait(1500);
+
+            uiResp.classList.add('show');
+            document.getElementById('resp-txt').innerHTML = mode === 'full' ?
+                "Reprise: 24,500€<br>Offre SUV: 440€/mois<br>Statut: VALIDÉ" :
+                "Estimation Marché: 24,800€<br>Tendance: Stable";
+
+            log('USER', "Réponse reçue. Workflow terminé avec succès.", '#fff');
+            orchBadge.innerHTML = "IDLE";
+        }
+
+    </script>
+</body>
+
+</html>
