@@ -8,4 +8,4 @@ Establish the backend foundation and build the first agent in the pipeline.
 - [ ] Implement `UserProfileAgent.py`.
 - [ ] Integrate `tools/bank_api.py` (Mock for now).
 - [ ] Define User Pydantic schemas in `app/schemas/user.py`.
-- [ ] Expose an endpoint `/user/profile` for testing.
+- [x] Expose an endpoint `/user/profile` for testing.
