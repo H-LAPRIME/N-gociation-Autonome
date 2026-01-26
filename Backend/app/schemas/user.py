@@ -1,37 +1,35 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel
 from typing import List, Optional
 from enum import Enum
 
 class RiskLevel(str, Enum):
-    CONSERVATIVE = "conservative"  # Wants "Safe" cars (high resale value like Dacia/Toyota), low mileage.
-    MODERATE = "moderate"
-    AGGRESSIVE = "aggressive"      # Willing to buy high-mileage German luxury or less common brands.
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
 
 class Financials(BaseModel):
-    max_budget_mad: float = Field(..., description="Budget in Moroccan Dirhams")
-    preferred_payment: str = Field(..., description="Credit, Cash, or Leasing/Mourabaha")
+    max_budget_mad: float = 0.0
+    preferred_payment: str = "Cash"
     monthly_limit_mad: Optional[float] = None
-    has_down_payment: bool = True # 'Apport initial' is very common in Morocco
+    current_debts_mad: float = 0.0
+    is_blacklisted: bool = False
+    contract_type: str = "Unknown"
 
 class Preferences(BaseModel):
     brands: List[str] = []
-    category: Optional[str] = None  # e.g., "Citadine", "SUV", "4x4"
-    fuel_type: str = "Diesel"  # Diesel is king in Morocco, default to it
-    transmission: str = "Manuelle" # Manual is still very common
-    is_imported: Optional[bool] = None # "Dédouanée" vs "Marocaine" (WW)
+    category: Optional[str] = None 
+    fuel_type: str = "Diesel"
+    usage: Optional[str] = None # New: For "usage" task in PDF
 
 class User(BaseModel):
     user_id: int
     username: str
-    email: EmailStr
+    email: str
     full_name: str
-    phone_number: Optional[str]
+    phone_number: Optional[str] = None
     city: str = "Casablanca"
-    income: float
+    income_mad: float
     
     financials: Financials
     preferences: Preferences
-    risk_level: RiskLevel = RiskLevel.MODERATE
-    
-    class Config:
-        from_attributes = True
+    risk_level: RiskLevel = RiskLevel.MEDIUM
