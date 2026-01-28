@@ -4,8 +4,8 @@
 
 from fastapi import FastAPI, HTTPException
 # from app.api.v1 import api_router
-from schemas import UserProfile, AnalyzeProfileRequest
-from app.agents.UserProfileAgent import UserProfileAgent
+from schemas import User, AnalyzeProfileRequest
+from agents.UserProfileAgent import UserProfileAgent
 
 app = FastAPI(title="OMEGA Backend")
 
@@ -17,7 +17,7 @@ async def root():
 
 @app.get("/user/profile")
 async def get_user_profile():
-    return UserProfile(
+    return User(
         user_id=1,
         username="johndoe",
         email="john.doe@example.com",
@@ -35,11 +35,6 @@ async def analyze_user_profile(request: AnalyzeProfileRequest):
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 if __name__ == "__main__":

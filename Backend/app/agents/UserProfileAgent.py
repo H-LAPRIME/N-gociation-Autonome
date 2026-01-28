@@ -1,6 +1,6 @@
-from app.agents.base import BaseOmegaAgent
-from app.tools.bank_api import get_bank_data
-from app.schemas.user import User, RiskLevel, Financials, Preferences, BehavioralAnalysis
+from agents.base import BaseOmegaAgent
+from tools.bank_api import get_bank_data
+from schemas.user import User, RiskLevel, Financials, Preferences, BehavioralAnalysis
 from typing import Dict, Any
 import json
 
