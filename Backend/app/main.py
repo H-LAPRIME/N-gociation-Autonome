@@ -1,10 +1,13 @@
 # Point d'entrée principal de l'application FastAPI OMEGA (Responsabilité: Moustapha).
 # Ce fichier initialise l'application, configure les middlewares (CORS, etc.)
 # et inclut les routes de l'API (api/v1/api.py).
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
 from fastapi import FastAPI
 from .api.v1.api import api_router
 from .schemas import User
-
 
 app = FastAPI(title="OMEGA Backend")
 
@@ -27,3 +30,4 @@ async def get_user_profile():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
