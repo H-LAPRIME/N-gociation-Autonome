@@ -2,9 +2,10 @@
 # Ce fichier initialise l'application, configure les middlewares (CORS, etc.)
 # et inclut les routes de l'API (api/v1/api.py).
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 # from app.api.v1 import api_router
-from schemas import User
+from schemas import UserProfile, AnalyzeProfileRequest
+from app.agents.UserProfileAgent import UserProfileAgent
 
 app = FastAPI(title="OMEGA Backend")
 
@@ -16,12 +17,29 @@ async def root():
 
 @app.get("/user/profile")
 async def get_user_profile():
-    return User(
+    return UserProfile(
         user_id=1,
         username="johndoe",
         email="john.doe@example.com",
         full_name="John Doe"
     )
+
+user_profile_agent = UserProfileAgent()
+@app.post("/user/analyze")
+async def analyze_user_profile(request: AnalyzeProfileRequest):
+    try:
+        result = await user_profile_agent.assess_fiscal_health(
+            user_id=request.user_id,
+            user_input=request.user_input
+        )
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 if __name__ == "__main__":

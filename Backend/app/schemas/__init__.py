@@ -1,3 +1,3 @@
 from .user import User
-
-__all__ = ["User"]
+from .profile_req import AnalyzeProfileRequest
+__all__ = ["User", "AnalyzeProfileRequest"]

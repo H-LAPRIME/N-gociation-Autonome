@@ -10,7 +10,7 @@ async def get_bank_data(user_id: str):
             "monthly_income": 12000,
             "monthly_debt_payments": 3000,
             "is_blacklisted": False,
-            "contract_type": "CDI", # Very important in Morocco for credit
+            "contract_type": "CDI", 
             "bank_seniority_months": 24
         },
         2: {
