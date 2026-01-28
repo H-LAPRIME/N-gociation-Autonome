@@ -1,14 +1,14 @@
 # Point d'entrée principal de l'application FastAPI OMEGA (Responsabilité: Moustapha).
 # Ce fichier initialise l'application, configure les middlewares (CORS, etc.)
 # et inclut les routes de l'API (api/v1/api.py).
-
 from fastapi import FastAPI
-# from app.api.v1 import api_router
-from schemas import User
+from .api.v1.api import api_router
+from .schemas import User
+
 
 app = FastAPI(title="OMEGA Backend")
 
-# app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
