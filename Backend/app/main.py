@@ -7,12 +7,13 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 # from app.api.v1 import api_router
-from schemas import User, AnalyzeProfileRequest
-from agents.UserProfileAgent import UserProfileAgent
+from app.schemas import User, AnalyzeProfileRequest
+from app.agents.UserProfileAgent import UserProfileAgent
+from app.agents.MarketAnalysisAgent import MarketAnalysisAgent
 
 app = FastAPI(title="OMEGA Backend")
 
-app.include_router(api_router, prefix="/api/v1")
+# app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
@@ -39,6 +40,12 @@ async def analyze_user_profile(request: AnalyzeProfileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+market_agent = MarketAnalysisAgent()
+@app.get("/market/trends")
+async def market_trends(model: str):
+    result = await market_agent.analyze_market(model)
+    return {"result": result}
 
 if __name__ == "__main__":
     import uvicorn
