@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, RefreshCw, Clock, Wallet, ChevronDown, ChevronUp, History, Trash } from 'lucide-react';
+import { Check, X, RefreshCw, Clock, Wallet, ChevronDown, ChevronUp, History, Trash, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { GlassCard } from '@/components/UI/GlassCard';
 import { negotiationService, NegotiationHistory, NegotiationMessageRequest } from '@/services/negotiationService';
+
+interface ValidationInfo {
+    is_approved: boolean;
+    audit_trail: string[];
+    violations: string[];
+    confidence_score: number;
+}
 
 interface NegotiationCardProps {
     sessionId: string;
@@ -28,6 +35,8 @@ export const NegotiationCard: React.FC<NegotiationCardProps> = ({
     const [showCounterForm, setShowCounterForm] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [history, setHistory] = useState<NegotiationHistory[]>([]);
+    const [validationInfo, setValidationInfo] = useState<ValidationInfo | null>(null);
+    const [showValidation, setShowValidation] = useState(false);
 
     // Counter offer inputs
     const [counterPrice, setCounterPrice] = useState(initialOffer.offer_price_mad || 0);
@@ -72,12 +81,17 @@ export const NegotiationCard: React.FC<NegotiationCardProps> = ({
             setRound(response.round);
             if (response.revised_offer) {
                 setCurrentOffer(response.revised_offer);
-                if (action !== 'counter') {
-                    // Start fresh if user accepts/rejects, but usually backend handles status
-                }
             }
             setStatus(response.status);
             setShowCounterForm(false);
+
+            // Handle validation info from response
+            if (response.validation_info) {
+                setValidationInfo(response.validation_info);
+                setShowValidation(true);
+                // Auto-hide after 10 seconds
+                setTimeout(() => setShowValidation(false), 12500);
+            }
 
             // Notify parent to show agent message in chat
             onNegotiationUpdate({
@@ -124,6 +138,117 @@ export const NegotiationCard: React.FC<NegotiationCardProps> = ({
                         </span>
                     </div>
                 </div>
+
+                {/* Validation Notifications */}
+                <AnimatePresence>
+                    {showValidation && validationInfo && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                        >
+                            <div className={`p-3 border-b flex flex-col gap-2 ${validationInfo.is_approved
+                                ? 'bg-green-500/10 border-green-500/20'
+                                : 'bg-red-500/10 border-red-500/20'
+                                }`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        {validationInfo.is_approved ? (
+                                            <CheckCircle className="text-green-400" size={16} />
+                                        ) : (
+                                            <XCircle className="text-red-400" size={16} />
+                                        )}
+                                        <span className={`text-xs font-bold ${validationInfo.is_approved ? 'text-green-400' : 'text-red-400'
+                                            }`}>
+                                            {validationInfo.is_approved ? 'Validation Business Réussie' : 'Violation Business Détectée'}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowValidation(false)}
+                                        className="text-white/30 hover:text-white/60 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+
+                                <div className="max-h-[300px] overflow-y-auto pr-2 custom-scrollbar space-y-3">
+                                    <div className="text-[11px] text-white/70 italic leading-tight px-1 space-y-1">
+                                        {validationInfo.is_approved ? (
+                                            <p>Votre offre a été validée avec succès par notre système de contrôle de gestion.</p>
+                                        ) : (
+                                            <div>
+                                                <p className="text-red-300 font-bold mb-1">Offre non conforme :</p>
+                                                <ul className="list-disc list-inside space-y-0.5">
+                                                    {validationInfo.violations.map((v, i) => (
+                                                        <li key={i} className="text-red-200/80 not-italic">{v}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {validationInfo.audit_trail.some(log => log.includes('⚠️')) && (
+                                            <div className="mt-2 pt-2 border-t border-white/5">
+                                                <p className="text-yellow-300/80 font-bold mb-1 flex items-center gap-1">
+                                                    <AlertTriangle size={10} /> Attention (Points de vigilance) :
+                                                </p>
+                                                <ul className="list-disc list-inside space-y-0.5 text-yellow-100/60 not-italic">
+                                                    {validationInfo.audit_trail
+                                                        .filter(log => log.includes('⚠️'))
+                                                        .map((warn, i) => (
+                                                            <li key={i}>{warn.replace(/^[⚠️][\s]*/, '')}</li>
+                                                        ))
+                                                    }
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        {validationInfo.audit_trail.map((log, idx) => {
+                                            const isPass = log.includes('✅');
+                                            const isFail = log.includes('❌');
+                                            const isWarn = log.includes('⚠️');
+                                            const isInfo = log.includes('ℹ️');
+
+                                            return (
+                                                <div key={idx} className="flex items-start gap-2 text-[10px]">
+                                                    <div className="mt-0.5">
+                                                        {isPass && <CheckCircle className="text-green-400" size={10} />}
+                                                        {isFail && <XCircle className="text-red-400" size={10} />}
+                                                        {isWarn && <AlertTriangle className="text-yellow-400" size={10} />}
+                                                        {isInfo && <Info className="text-blue-400" size={10} />}
+                                                        {!isPass && !isFail && !isWarn && !isInfo && <div className="w-2.5 h-2.5 rounded-full bg-white/20" />}
+                                                    </div>
+                                                    <span className={`${isPass ? 'text-green-300/70' :
+                                                        isFail ? 'text-red-300/70' :
+                                                            isWarn ? 'text-yellow-300/70' :
+                                                                'text-white/50'
+                                                        }`}>
+                                                        {log.replace(/^[✅❌⚠️ℹ️][\s]*/, '')}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {validationInfo.violations.length > 0 && !validationInfo.is_approved && (
+                                        <div className="mt-1 p-2 rounded bg-red-500/20 border border-red-500/30">
+                                            <p className="text-[10px] font-bold text-red-200 mb-1 flex items-center gap-1">
+                                                <AlertTriangle size={10} /> Détails des Violations:
+                                            </p>
+                                            <ul className="list-disc list-inside space-y-0.5">
+                                                {validationInfo.violations.map((v, i) => (
+                                                    <li key={i} className="text-[9px] text-red-100/80">{v}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Offer Details */}
                 <div className="p-4 text-center">

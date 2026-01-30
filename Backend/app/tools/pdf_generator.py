@@ -166,8 +166,10 @@ def generate_contract_pdf(offer_data: Dict[str, Any], contract_id: str) -> str:
             ['Durée:', '60 mois (estimation)'],
         ])
     
-    # Calculate net amount
-    net_amount = negotiated.get('offer_price_mad', 0) - negotiated.get('trade_in_value_mad', 0)
+    # Calculate net amount (handle None values)
+    offer_price = negotiated.get('offer_price_mad', 0) or 0
+    trade_in_value = negotiated.get('trade_in_value_mad') or 0
+    net_amount = offer_price - trade_in_value
     financial_table_data.append(['Montant Net à Payer:', f"{net_amount:,.2f} MAD"])
     
     financial_table = Table(financial_table_data, colWidths=[5*cm, 10*cm])

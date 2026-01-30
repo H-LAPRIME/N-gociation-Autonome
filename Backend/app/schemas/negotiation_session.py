@@ -72,3 +72,5 @@ class NegotiationMessageResponse(BaseModel):
     remaining_rounds: int
     status: str
     session_id: str
+    validation_info: Optional[dict] = None  # Contains audit_trail, is_approved, violations
+

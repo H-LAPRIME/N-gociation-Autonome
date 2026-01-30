@@ -34,84 +34,107 @@ class BusinessConstraintAgent(BaseOmegaAgent):
 
     async def validate_final_offer(self, offer_data: Dict[str, Any]) -> BusinessValidation:
         """
-        Validates the final negotiated offer against business constraints.
+        Validates the final negotiated offer against business constraints using pure Python logic.
+        OPTIMIZED: No LLM calls - direct validation for 5-8 second speedup.
         """
-        prompt = f"""
-        OFFER DATA FOR VALIDATION:
-        {json.dumps(offer_data, indent=2, default=str)}
+        violations = []
+        audit_trail = []
+        warnings = []
         
-        CONTEXT:
-        - Current Year: 2026
+        # Extract data
+        negotiated = offer_data.get('negotiated_terms', {})
+        user_profile = offer_data.get('user_profile', {})
+        market_data = offer_data.get('market_data', {})
         
-        PERFORM CHECKS:
-        - Check discount vs market average price (limit 15%).
-        - Check trade-in year (limit >= 2010). 2026 is VALID.
-        - Check risk vs payment method (High risk cannot use financing).
+        # Get key values
+        offer_price = negotiated.get('offer_price_mad', 0)
+        discount_amount = negotiated.get('discount_amount_mad', 0)
+        market_avg_price = market_data.get('average_price', 0) or market_data.get('market_average_price', 0)
         
-        CRITICAL RULE FOR MISSING DATA:
-        - If 'market_average_price' or 'market_data' is missing/null/zero -> APPROVED = true (add warning).
-        - If 'trade_in_year' is missing -> APPROVED = true (add warning).
-        - If risk logic cannot be checked due to missing data -> APPROVED = true.
-        - NEVER REJECT DUE TO MISSING DATA. ONLY REJECT EXPLICIT VIOLATIONS.
+        # Enhanced trade-in year lookup (check negotiated terms first, then user profile)
+        trade_in_year = negotiated.get('trade_in_year')
+        if not trade_in_year:
+            # Fallback to user profile extraction structure
+            trade_in_info = user_profile.get('trade_in_vehicle_details', {}) or user_profile.get('trade_in', {})
+            if isinstance(trade_in_info, dict):
+                trade_in_year = trade_in_info.get('year')
         
-        Return exactly this JSON structure:
-        {{
-            "is_approved": <bool>,
-            "violations": ["list of strings"],
-            "audit_trail": ["Check 1: ...", "Check 2: ..."],
-            "confidence_score": <float>
-        }}
-        """
+        payment_method = negotiated.get('payment_method', '').lower()
+        risk_level = user_profile.get('risk_level', '').lower()
         
-        response = self.run(prompt)
-        content = getattr(response, "content", None) or getattr(response, "output_text", str(response))
-        
-        # Clean JSON extraction
-        if "```json" in content:
-            json_str = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            json_str = content.split("```")[1].split("```")[0].strip()
-        else:
-            import re
-            json_match = re.search(r"(\{.*\})", content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1).strip()
+        # RULE 1: Discount Margin Check (max 15%)
+        if market_avg_price and market_avg_price > 0:
+            discount_percentage = (discount_amount / market_avg_price) * 100
+            audit_trail.append(f"Discount Check: {discount_amount:,.2f} MAD / {market_avg_price:,.2f} MAD = {discount_percentage:.2f}%")
+            
+            if discount_percentage > 15:
+                violations.append(f"Discount {discount_percentage:.2f}% exceeds maximum 15% margin")
+                audit_trail.append(f"❌ VIOLATION: Discount {discount_percentage:.2f}% > 15%")
             else:
-                json_str = content.strip()
-            
-        import re
-        json_str = re.sub(r'[\x00-\x1f]', '', json_str)
+                audit_trail.append(f"✅ PASS: Discount {discount_percentage:.2f}% ≤ 15%")
+        else:
+            warnings.append("Market average price missing - cannot validate discount margin")
+            audit_trail.append("⚠️ WARNING: Market data unavailable for discount validation")
         
-        data = json.loads(json_str, strict=False)
-        
-        # FAILSAFE: If the LLM marks it as unapproved but the violations are just "missing data" or "market average", force approval.
-        # This prevents the bot from blocking the user due to lack of external data.
-        if not data.get("is_approved", True):
-            violations = data.get("violations", [])
-            # Check if violations are actually just warnings about missing data
-            is_valid_failure = False
-            for v in violations:
-                v_lower = str(v).lower()
-                # Expanded list of keywords that indicate "Missing Data" rather than "Rule Violation"
-                data_issue_keywords = [
-                    "missing", "unknown", "zero", "cannot validate", "insufficient", 
-                    "undetermined", "not found", "unavailable", "reference data",
-                    "market average", "market price" # If it complains about market price, it's a data issue usually
-                ]
+        # RULE 2: Trade-in Year Check (must be >= 2010)
+        if trade_in_year:
+            try:
+                year_int = int(trade_in_year)
+                audit_trail.append(f"Trade-in Year Check: {year_int}")
                 
-                # Check if it matches any data issue keyword
-                if any(k in v_lower for k in data_issue_keywords):
-                    continue
-                
-                # If we find a specific number violation (like "2009 < 2010" or "discount 20%"), then it's a real failure
-                is_valid_failure = True
-                break
-            
-            if not is_valid_failure:
-                # Override to True
-                data["is_approved"] = True
-                data["audit_trail"] = data.get("audit_trail", []) + [f"Auto-Approved: Overrode violations {violations} as warnings."]
-                data["violations"] = [] # Clear violations so backend doesn't complain
+                if year_int < 2010:
+                    violations.append(f"Trade-in vehicle year {year_int} is older than 2010 minimum")
+                    audit_trail.append(f"❌ VIOLATION: Year {year_int} < 2010")
+                elif year_int > 2026:
+                    violations.append(f"Trade-in vehicle year {year_int} is invalid (future year)")
+                    audit_trail.append(f"❌ VIOLATION: Year {year_int} > 2026 (current year)")
+                else:
+                    audit_trail.append(f"✅ PASS: Year {year_int} is valid (2010-2026)")
+            except (ValueError, TypeError):
+                warnings.append(f"Invalid trade-in year format: {trade_in_year}")
+                audit_trail.append(f"⚠️ WARNING: Cannot parse trade-in year '{trade_in_year}'")
+        else:
+            # No trade-in, skip this check
+            audit_trail.append("ℹ️ INFO: No trade-in vehicle - skipping year validation")
         
-        return BusinessValidation(**data)
+        # RULE 3: Risk-Based Financing Check (HIGH risk = CASH ONLY)
+        if risk_level == 'high' or risk_level == 'élevé':
+            audit_trail.append(f"Risk Level Check: {risk_level.upper()}")
+            
+            if payment_method in ['financing', 'financement', 'credit', 'crédit']:
+                violations.append(f"High-risk client cannot use financing - CASH ONLY required")
+                audit_trail.append(f"❌ VIOLATION: HIGH risk client using {payment_method}")
+            else:
+                audit_trail.append(f"✅ PASS: HIGH risk client using {payment_method} (not financing)")
+        else:
+            audit_trail.append(f"✅ PASS: Risk level '{risk_level}' allows financing")
+        
+        # RULE 4: Currency Check (must be MAD)
+        if offer_price > 0:
+            # Assume MAD if price is reasonable for Morocco (10,000 - 10,000,000)
+            if 10000 <= offer_price <= 10000000:
+                audit_trail.append(f"✅ PASS: Price {offer_price:,.2f} MAD is in valid range")
+            else:
+                warnings.append(f"Price {offer_price:,.2f} MAD seems unusual - verify currency")
+                audit_trail.append(f"⚠️ WARNING: Price {offer_price:,.2f} outside typical range")
+        
+        # Determine approval
+        is_approved = len(violations) == 0
+        confidence_score = 1.0 if is_approved else 0.0
+        
+        # Add summary to audit trail
+        if is_approved:
+            audit_trail.append(f"✅ FINAL: APPROVED - All business constraints satisfied")
+        else:
+            audit_trail.append(f"❌ FINAL: REJECTED - {len(violations)} violation(s) found")
+        
+        if warnings:
+            audit_trail.append(f"⚠️ {len(warnings)} warning(s): {'; '.join(warnings)}")
+        
+        return BusinessValidation(
+            is_approved=is_approved,
+            violations=violations,
+            audit_trail=audit_trail,
+            confidence_score=confidence_score
+        )
 

@@ -187,7 +187,13 @@ async def _handle_accept(session: NegotiationSession, message_data: NegotiationM
             round=session.current_round,
             remaining_rounds=session.max_rounds - session.current_round,
             status="active",
-            session_id=session.session_id
+            session_id=session.session_id,
+            validation_info={
+                "is_approved": validation.is_approved,
+                "audit_trail": validation.audit_trail,
+                "violations": validation.violations,
+                "confidence_score": validation.confidence_score
+            }
         )
     
     # Approved! Generate final contract
@@ -216,7 +222,13 @@ async def _handle_accept(session: NegotiationSession, message_data: NegotiationM
             round=session.current_round,
             remaining_rounds=0,
             status="completed",
-            session_id=session.session_id
+            session_id=session.session_id,
+            validation_info={
+                "is_approved": validation.is_approved,
+                "audit_trail": validation.audit_trail,
+                "violations": validation.violations,
+                "confidence_score": validation.confidence_score
+            }
         )
     
     except Exception as e:

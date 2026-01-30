@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="OMEGA Backend")
 
-# --- MIDDLEWARE & ROUTERS ---
+# --- MIDDLEWARE & ROUTERS --- 
 
 # Configure CORS (Cross-Origin Resource Sharing)
 # In production, specific origins should be white-listed.
@@ -124,7 +124,7 @@ class OrchestrateRequest(BaseModel):
     user_profile_state: Dict = {}
     session_id: Optional[str] = None
 
-# --- ORCHESTRATION & AGENTS ---
+# --- ORCHESTRATION & AGENTS --- 
 
 # Orchestrator handles the complex multi-agent flows
 orchestrator = OrchestratorAgent()

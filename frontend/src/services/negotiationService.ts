@@ -22,6 +22,12 @@ export interface NegotiationMessageResponse {
     remaining_rounds: number;
     status: string;
     session_id: string;
+    validation_info?: {
+        is_approved: boolean;
+        audit_trail: string[];
+        violations: string[];
+        confidence_score: number;
+    };
 }
 
 export interface NegotiationHistory {
