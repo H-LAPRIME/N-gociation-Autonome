@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 from enum import Enum
+
 
 class RiskLevel(str, Enum):
     LOW = "Low"
@@ -29,6 +30,16 @@ class BehavioralAnalysis(BaseModel):
     flexibility: Optional[float] = None
     detected_needs: List[str] = Field(default_factory=list)
 
+class TradeInInfo(BaseModel):
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    mileage: Optional[int] = None
+    condition: Optional[str] = None
+    accidents: Optional[bool] = None
+    maintenance: Optional[str] = None
+    owners: Optional[int] = None
+
 class User(BaseModel):
     user_id: int
     username: str
@@ -42,3 +53,17 @@ class User(BaseModel):
     preferences: Optional[Preferences] = None
     risk_level: Optional[RiskLevel] = None
     behavior: Optional[BehavioralAnalysis] = None
+    trade_in: Optional[TradeInInfo] = None
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    city: Optional[str] = None
+    income_mad: Optional[float] = 0
+    financials: Optional[Financials] = None
+    preferences: Optional[Preferences] = None

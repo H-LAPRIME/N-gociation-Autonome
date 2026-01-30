@@ -1,13 +1,20 @@
 from app.agents.base import BaseOmegaAgent
 from app.tools.bank_api import get_bank_data
-from app.schemas.user import User, RiskLevel, Financials, Preferences, BehavioralAnalysis
+from app.schemas.user import User, RiskLevel, Financials, Preferences, BehavioralAnalysis, TradeInInfo
 from typing import Dict, Any
 import json
 
 class UserProfileAgent(BaseOmegaAgent):
+    """
+    Expert Agent for User Profiling & Risk Assessment.
+    
+    This agent analyzes user messages to extract sentiment, urgency, 
+    and vehicle preferences. it also interacts with bank APIs to
+    calculate fiscal health (DTI, Risk Level) and determine maximum budget.
+    """
     def __init__(self):
         super().__init__(
-            name="ClientProfileAgent",
+            name="UserProfileAgent",
             instructions=[
                 "You are an expert Moroccan car-buying consultant and financial analyst.",
                 "Extract comprehensive information from user messages including:",
@@ -19,12 +26,16 @@ class UserProfileAgent(BaseOmegaAgent):
                 "- Location/city mentions",
                 "- Contact information if provided",
                 "- Specific needs or requirements",
+                "- Trade-in vehicle details (brand, model, year, mileage, condition, accidents, maintenance, owners)",
                 "Always respond in valid JSON format.",
             ],
             tools=[get_bank_data] 
         )
+        # Detailed Agno configuration
+        self.agent.role = "Moroccan Car-Buying Consultant & Financial Analyst"
+        self.agent.description = "Expert in extracting and analyzing user profiles for automobile financing and purchasing in Morocco."
 
-    async def assess_fiscal_health(self, user_id: int, user_input: str) -> User:
+    async def assess_fiscal_health(self, user_id: int, user_input: str, current_profile_data: Dict = None) -> User:
         # 1. Get bank data
         bank_response = await get_bank_data(user_id)
         data = bank_response["data"]
@@ -49,7 +60,17 @@ Return a JSON object with the following structure (use null for missing informat
     "city": "city name or null",
     "phone_number": "phone number or null",
     "detected_needs": ["list of specific needs mentioned"],
-    "flexibility_score": "0.0 to 1.0 based on how flexible user seems, or null"
+    "flexibility_score": "0.0 to 1.0 based on how flexible user seems, or null",
+    "trade_in": {{
+        "brand": "string or null",
+        "model": "string or null",
+        "year": "integer or null",
+        "mileage": "integer or null",
+        "condition": "string or null",
+        "accidents": "boolean or null",
+        "maintenance": "string or null",
+        "owners": "integer or null"
+    }}
 }}
 
 Examples of urgency indicators: "urgent", "tomorrow", "asap", "quickly", "now", "this week"
@@ -62,16 +83,58 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
         
         # 4. Parse AI response
         ai_data = self._parse_ai_response(ai_res.content)
+        
+        # 4b. MERGE with existing profile data (current_profile_data)
+        if current_profile_data:
+            # Helper to merge if new is null/empty but old exists
+            def text_merge(new, old): return new if new else old
+            def list_merge(new, old): return list(set((new or []) + (old or [])))
+            
+            # Extract previous extraction if available
+            prev_extract = current_profile_data.get('profil_extraction', {})
+            
+            # Merge Top-level fields
+            ai_data['city'] = text_merge(ai_data.get('city'), prev_extract.get('city'))
+            ai_data['budget_mentioned'] = text_merge(ai_data.get('budget_mentioned'), prev_extract.get('budget_mentioned'))
+            
+            # Merge vehicle preferences
+            prev_prefs = prev_extract.get('vehicle_preferences', {})
+            ai_data['vehicle_category'] = text_merge(ai_data.get('vehicle_category'), prev_prefs.get('category'))
+            ai_data['brands'] = list_merge(ai_data.get('brands'), prev_prefs.get('brands'))
+            
+            # Merge Trade-in (Critical for the loop fix)
+            prev_trade = prev_extract.get('trade_in_vehicle_details', {})
+            new_trade = ai_data.get('trade_in') or {}
+            
+            merged_trade = {
+                "brand": text_merge(new_trade.get('brand'), prev_trade.get('brand')),
+                "model": text_merge(new_trade.get('model'), prev_trade.get('model')),
+                "year": text_merge(new_trade.get('year'), prev_trade.get('year')),
+                "mileage": text_merge(new_trade.get('mileage'), prev_trade.get('mileage')),
+                "condition": text_merge(new_trade.get('condition'), prev_trade.get('condition')),
+                "accidents": text_merge(new_trade.get('accidents'), prev_trade.get('accidents')),
+                "maintenance": text_merge(new_trade.get('maintenance'), prev_trade.get('maintenance')),
+                "owners": text_merge(new_trade.get('owners'), prev_trade.get('owners'))
+            }
+            # Only set trade_in if there is actual data
+            if any(merged_trade.values()):
+                ai_data['trade_in'] = merged_trade
 
-        # 5. Calculate financial metrics
-        income = data.get("monthly_income", 0)
-        debts = data.get("monthly_debt_payments", 0)
+        # 5. Calculate financial metrics (Prioritize merged profile over mock simulation)
+        prev_extract = current_profile_data.get('profil_extraction', {}) if current_profile_data else {}
+        
+        # Use bank data if valid, otherwise fallback to persisted profile
+        income = data.get("monthly_income") or prev_extract.get("monthly_income") or 0
+        debts = data.get("monthly_debt_payments") or prev_extract.get("monthly_debt_payments") or 0
         bank_seniority = data.get("bank_seniority_months", 0)
         is_blacklisted = data.get("is_blacklisted", False)
-        contract_type = data.get("contract_type")
+        
+        # Priority for contract: Merged extraction > Bank API
+        contract_type = prev_extract.get("contract_type") or data.get("contract_type")
         
         # Calculate DTI (Debt-to-Income ratio)
-        dti = (debts / income) if income > 0 else 1.0
+        # If income is 0 or missing, assume 0 DTI (benefit of doubt) instead of 1.0 (high risk)
+        dti = (debts / income) if income and income > 0 else 0.0
         
         # 6. Determine risk level based on multiple factors
         risk_level = self._calculate_risk_level(
@@ -135,7 +198,8 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
                 urgency=ai_data.get("urgency"),
                 flexibility=ai_data.get("flexibility_score"),
                 detected_needs=ai_data.get("detected_needs", [])
-            )
+            ),
+            trade_in=TradeInInfo(**ai_data.get("trade_in", {})) if ai_data.get("trade_in") else None
         )
 
     def _parse_ai_response(self, content: str) -> Dict[str, Any]:
@@ -166,15 +230,22 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
         if is_blacklisted:
             return RiskLevel.HIGH
         
-        # High risk conditions
-        if dti >= 0.5 or contract_type not in ["CDI", "Fonctionnaire"]:
+        # Helper: Treat missing data leniently for demo purposes
+        # If contract_type is missing, assume it's acceptable (don't default to High Risk)
+        has_stable_contract = contract_type in ["CDI", "Fonctionnaire"] if contract_type else True 
+        
+        # High risk conditions (Only if explicit negative signals)
+        if dti >= 0.6: # Relaxed DTI threshold
+            return RiskLevel.HIGH
+        
+        if contract_type and not has_stable_contract: # Only penalize if we KNOW it's not stable
             return RiskLevel.HIGH
         
         # Medium risk conditions
-        if dti >= 0.35 or bank_seniority < 12:
+        if dti >= 0.40 or bank_seniority < 6: # Relaxed seniority
             return RiskLevel.MEDIUM
         
-        # Low risk
+        # Default to LOW risk for smoother demo experience if no red flags
         return RiskLevel.LOW
 
     def _calculate_max_budget(

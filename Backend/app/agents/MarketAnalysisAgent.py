@@ -29,15 +29,14 @@ from ..tools.sql_inventory import check_inventory, get_vehicle_stock_levels, upd
 
 class MarketAnalysisAgent(BaseOmegaAgent):
     """
-    Agent spécialisé dans l'analyse du marché automobile et de l'inventaire.
+    Market Insight & Inventory Agent.
     
-    Responsabilités:
-    - Analyser la disponibilité des stocks (CSV)
-    - Identifier les tendances de demande
-    - Évaluer le sentiment du marché pour les SUV
-    - Fournir un contexte marché pour la négociation
+    This agent specializes in analyzing automobile market trends and 
+    showroom inventory. It identifies high-demand models, evaluates 
+    stock levels, and provides strategic market context for the 
+    negotiation process.
     
-    Utilise: cars_market.csv comme source de données
+    Uses: cars_market.csv as the primary data source.
     """
     
     def __init__(self):
@@ -228,10 +227,15 @@ class MarketAnalysisAgent(BaseOmegaAgent):
             MarketContext complet avec stocks, tendances et recommandations
         """
         
-        # Exécution des tâches d'analyse en parallèle
-        inventory_result = await self.search_inventory(model, brand, user_budget)
-        sentiment_result = await self.market_sentiment_analysis(model)
-        stock_levels = await self.get_stock_levels("SUV")
+        # Exécution des tâches d'analyse en parallèle pour optimiser la vitesse
+        import asyncio
+        results = await asyncio.gather(
+            self.search_inventory(model, brand, user_budget),
+            self.market_sentiment_analysis(model),
+            self.get_stock_levels("SUV")
+        )
+        
+        inventory_result, sentiment_result, stock_levels = results
         
         # Construction du contexte marché
         market_context = {

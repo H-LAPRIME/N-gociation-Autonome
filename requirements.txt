@@ -9,17 +9,21 @@ agno
 pydantic
 pydantic-settings
 python-dotenv
-
+pydantic[email] 
+PyJWT
 # Networking & APIs
 httpx
 
 # Database (Mohammed)
 sqlalchemy
 databases[postgresql]
-
+qrcode
 # Scraping & Tools (Reda)
 beautifulsoup4
 playwright
 
 # Backend Tools (Halima)
 reportlab
+
+# UI
+streamlit

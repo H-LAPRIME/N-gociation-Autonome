@@ -1,9 +1,9 @@
-# Gestionnaire de stock et d'inventaire SQL (Responsabilité: Halima).
-# Ce module exécute des requêtes de base de données (PostgreSQL/MySQL) pour :
-# 1. Vérifier la disponibilité des véhicules SUV critiques.
-# 2. Consulter les prix de vente actuels dans l'inventaire local.
-# 3. Mettre à jour l'état du stock après une offre validée.
-
+"""
+CSV Inventory Manager Tool
+--------------------------
+Handles showroom stock using a CSV file as a database.
+Provides filtering, stock updates, and market statistics.
+"""
 import asyncio
 import pandas as pd
 import os
@@ -68,14 +68,34 @@ class CSVInventoryManager:
     def _enrich_data(self):
         """Enrichir les données avec des colonnes calculées."""
         # Ajouter colonne 'disponible' basée sur quantity
-        self.df['disponible'] = self.df['quantity'] > 0
+        if 'quantity' in self.df.columns:
+            self.df['disponible'] = self.df['quantity'] > 0
+        else:
+            self.df['disponible'] = True
+            self.df['quantity'] = 1
         
+        # Ajouter colonne 'km' (kilométrage) si manquante
+        if 'km' not in self.df.columns:
+            # Simuler un kilométrage basé sur l'année
+            current_year = datetime.now().year
+            def estimate_km(row):
+                year = row.get('year', 2015)
+                try:
+                    y = int(year)
+                except:
+                    y = 2015
+                age = max(1, current_year - y)
+                return age * 15000 + (hash(str(row.get('modele', ''))) % 10000)
+            self.df['km'] = self.df.apply(estimate_km, axis=1)
+            
         # Calculer un prix estimé basé sur l'année et la marque
-        # (à ajuster selon vos besoins)
         self.df['prix_estime'] = self._estimate_price(self.df)
         
         # Catégoriser les véhicules
-        self.df['categorie'] = self.df['modele'].apply(self._categorize_vehicle)
+        if 'modele' in self.df.columns:
+            self.df['categorie'] = self.df['modele'].apply(self._categorize_vehicle)
+        else:
+            self.df['categorie'] = "Autres"
         
     
     def _estimate_price(self, df: pd.DataFrame) -> pd.Series:
@@ -85,40 +105,46 @@ class CSVInventoryManager:
         """
         current_year = datetime.now().year
         
-        # Prix de base par marque (en euros)
+        # Prix de base par marque (en MAD - Dirham Marocain)
         brand_base_prices = {
-            'mercedes-benz': 35000, 'bmw': 33000, 'audi': 32000,
-            'porsche': 70000, 'bentley': 150000, 'jaguar': 40000,
-            'land rover': 45000, 'tesla': 50000,
-            'volkswagen': 25000, 'renault': 22000, 'peugeot': 20000,
-            'citroen': 19000, 'dacia': 15000, 'seat': 18000,
-            'ford': 22000, 'opel': 18000, 'fiat': 16000,
-            'toyota': 25000, 'honda': 24000, 'nissan': 23000,
-            'hyundai': 20000, 'kia': 19000, 'suzuki': 17000,
-            'mini': 28000, 'volvo': 35000
+            'mercedes-benz': 350000, 'bmw': 330000, 'audi': 320000,
+            'porsche': 700000, 'bentley': 1500000, 'jaguar': 400000,
+            'land rover': 450000, 'tesla': 500000,
+            'volkswagen': 250000, 'renault': 180000, 'peugeot': 200000,
+            'citroen': 170000, 'dacia': 110000, 'seat': 180000,
+            'ford': 220000, 'opel': 180000, 'fiat': 140000,
+            'toyota': 250000, 'honda': 240000, 'nissan': 230000,
+            'hyundai': 190000, 'kia': 190000, 'suzuki': 150000,
+            'mini': 280000, 'volvo': 350000
         }
         
-        prices = []
-        for _, row in df.iterrows():
+        # Utiliser la vectorisation pandas au lieu de iterrows()
+        def calculate_price(row):
             brand = str(row['mark']).lower()
             year = row['year']
             
             # Prix de base selon la marque
-            base_price = brand_base_prices.get(brand, 20000)
+            base_price = brand_base_prices.get(brand, 150000)
             
             # Gérer les années spéciales
-            if isinstance(year, str) or year < 1980:
-                year = 1980
+            try:
+                year_val = int(year) if not isinstance(year, int) else year
+            except (ValueError, TypeError):
+                year_val = 2010 # Default for invalid years
             
-            # Dépréciation: -8% par an depuis année en cours
-            years_old = max(0, current_year - year)
-            depreciation = 1 - (years_old * 0.08)
-            depreciation = max(0.2, min(1.0, depreciation))  # Entre 20% et 100%
+            if year_val < 1980:
+                year_val = 1980
             
-            estimated_price = base_price * depreciation
-            prices.append(round(estimated_price, 2))
+            # Dépréciation: -7% par an depuis année en cours
+            current_year = datetime.now().year
+            years_old = max(0, current_year - year_val)
+            depreciation = 1 - (years_old * 0.07)
+            depreciation = max(0.1, min(1.0, depreciation))  # Entre 10% et 100%
+            
+            return round(base_price * depreciation, 2)
         
-        return pd.Series(prices)
+        # Appliquer la fonction de manière vectorisée
+        return df.apply(calculate_price, axis=1)
     
     def _categorize_vehicle(self, model: str) -> str:
         """Catégoriser le véhicule selon son modèle."""
@@ -177,6 +203,28 @@ class CSVInventoryManager:
             logger.error(f"❌ Erreur lors de la sauvegarde: {e}")
             return False
 
+    def get_unique_brands(self) -> List[str]:
+        """
+        Récupérer la liste des marques uniques disponibles dans l'inventaire.
+        """
+        try:
+            if self.df is None:
+                self._load_data()
+            
+            # Récupérer les marques uniques, triées
+            brands = sorted(self.df['mark'].dropna().unique().tolist())
+            
+            # Nettoyer les chaines de caractères
+            brands = [str(b).strip() for b in brands if str(b).strip()]
+            
+            # Filtre strict: la marque doit contenir au moins une lettre
+            brands = [b for b in brands if any(char.isalpha() for char in b)]
+            
+            return sorted(list(set(brands)))
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération des marques: {e}")
+            return []
+
 
 # Instance globale du gestionnaire
 inventory_manager = CSVInventoryManager()
@@ -209,8 +257,8 @@ async def check_inventory(search_params: dict) -> Dict[str, Any]:
         max_price = search_params.get("max_price")
         available_only = search_params.get("available", True)
                 
-        # Recharger les données
-        inventory_manager.reload_data()
+        # Utiliser le DataFrame en mémoire (déjà chargé)
+        # inventory_manager.reload_data() -> REMOVED for performance
         df = inventory_manager.get_dataframe()
         
         filtered_df = df.copy()
@@ -235,6 +283,15 @@ async def check_inventory(search_params: dict) -> Dict[str, Any]:
         if model and isinstance(model, str) and model.strip():
             filtered_df = filtered_df[
                 filtered_df['modele'].str.lower().str.contains(model.strip().lower(), na=False)
+            ]
+        
+        # Filtre de recherche globale (query)
+        query = search_params.get("query")
+        if query and isinstance(query, str) and query.strip():
+            q = query.strip().lower()
+            filtered_df = filtered_df[
+                (filtered_df['mark'].str.lower().str.contains(q, na=False)) |
+                (filtered_df['modele'].str.lower().str.contains(q, na=False))
             ]
         
         # Filtre prix maximum
@@ -291,8 +348,8 @@ async def get_vehicle_stock_levels(category: str = "SUV") -> Dict[str, Any]:
     """
     try:
         
-        # Recharger les données
-        inventory_manager.reload_data()
+        # Utiliser les données en mémoire
+        # inventory_manager.reload_data() -> REMOVED
         df = inventory_manager.get_dataframe()
         
         # Filtrer par catégorie si spécifié
@@ -376,8 +433,8 @@ async def update_demand_metrics(model: Optional[str] = None) -> Dict[str, Any]:
     """
     try:
         
-        # Recharger les données
-        inventory_manager.reload_data()
+        # Utiliser les données en mémoire
+        # inventory_manager.reload_data() -> REMOVED
         df = inventory_manager.get_dataframe()
         
         # Filtrer par modèle si spécifié
@@ -478,8 +535,8 @@ async def update_vehicle_status(brand: str = None, model: str = None,
     """
     try:
         
-        # Recharger les données
-        inventory_manager.reload_data()
+        # Utiliser les données en mémoire
+        # inventory_manager.reload_data() -> REMOVED
         df = inventory_manager.get_dataframe()
         
         # Trouver le véhicule
@@ -538,27 +595,42 @@ async def get_csv_statistics() -> Dict[str, Any]:
     Obtenir des statistiques générales sur le CSV.
     """
     try:
-        inventory_manager.reload_data()
         df = inventory_manager.get_dataframe()
+        
+        # Convertir les colonnes numériques de manière robuste
+        df['year_num'] = pd.to_numeric(df['year'], errors='coerce')
+        df['prix_num'] = pd.to_numeric(df['prix_estime'], errors='coerce')
+        df['km_num'] = pd.to_numeric(df['km'], errors='coerce')
+        df['qty_num'] = pd.to_numeric(df['quantity'], errors='coerce')
+        
+        valid_years = df['year_num'].dropna()
+        valid_prices = df['prix_num'].dropna()
+        valid_km = df['km_num'].dropna()
+        valid_qty = df['qty_num'].dropna()
         
         stats = {
             "total_rows": len(df),
             "columns": list(df.columns),
-            "total_stock": int(df['quantity'].sum()),
-            "available_vehicles": int((df['quantity'] > 0).sum()),
-            "unique_brands": int(df['mark'].nunique()),
-            "unique_models": int(df['modele'].nunique()),
+            "total_stock": int(valid_qty.sum()),
+            "available_vehicles": int((valid_qty > 0).sum()),
+            "unique_brands": int(df['mark'].nunique()) if 'mark' in df.columns else 0,
+            "unique_models": int(df['modele'].nunique()) if 'modele' in df.columns else 0,
             "year_range": {
-                "min": int(df[df['year'].apply(lambda x: isinstance(x, int))]['year'].min()),
-                "max": int(df[df['year'].apply(lambda x: isinstance(x, int))]['year'].max())
+                "min": int(valid_years.min()) if not valid_years.empty else 0,
+                "max": int(valid_years.max()) if not valid_years.empty else 0
             },
             "price_range": {
-                "min": float(df['prix_estime'].min()),
-                "max": float(df['prix_estime'].max()),
-                "avg": float(df['prix_estime'].mean())
+                "min": float(valid_prices.min()) if not valid_prices.empty else 0,
+                "max": float(valid_prices.max()) if not valid_prices.empty else 0,
+                "avg": float(valid_prices.mean()) if not valid_prices.empty else 0
             },
-            "categories": df['categorie'].value_counts().to_dict(),
-            "top_brands": df.groupby('mark')['quantity'].sum().nlargest(10).to_dict(),
+            "mileage_range": {
+                "min": float(valid_km.min()) if not valid_km.empty else 0,
+                "max": float(valid_km.max()) if not valid_km.empty else 0,
+                "avg": float(valid_km.mean()) if not valid_km.empty else 0
+            },
+            "categories": df['categorie'].value_counts().to_dict() if 'categorie' in df.columns else {},
+            "top_brands": df.groupby('mark')['qty_num'].sum().nlargest(10).to_dict() if 'mark' in df.columns else {},
             "timestamp": datetime.now().isoformat()
         }
         
@@ -570,3 +642,41 @@ async def get_csv_statistics() -> Dict[str, Any]:
         traceback.print_exc()
         return {"error": str(e)}
 
+async def get_model_price_history(model: str) -> List[Dict[str, Any]]:
+    """
+    Simuler un historique de prix pour un modèle donné sur 6 mois.
+    """
+    try:
+        # Rechercher le prix actuel du modèle
+        inventory_data = await check_inventory({"query": model, "available": False})
+        base_price = inventory_data.get("avg_price", 250000)
+        
+        if base_price == 0:
+            # Fallback plus varié selon la longueur du nom si pas trouvé
+            base_price = 150000 + (len(model) * 5000)
+            
+        months = ["Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre"]
+        history = []
+        
+        # Simuler une tendance baissière
+        import random
+        
+        random.seed(model)
+        
+        for i, month in enumerate(months):
+            # Simulation d'une baisse graduelle
+            # Moins 1% à 2% par mois
+            change = 1 - (i * 0.02)
+            noise = 1 + (random.uniform(-0.02, 0.02))
+            
+            price = round(base_price * change * noise)
+            
+            history.append({
+                "month": month,
+                "price": price
+            })
+            
+        return history
+    except Exception as e:
+        logger.error(f"Error generating price history for {model}: {e}")
+        return []

@@ -1,8 +1,9 @@
-# Outil de simulation d'API bancaire (Responsabilité: Moustapha).
-# Ce module gère les connexions aux services financiers pour :
-# 1. Vérifier l'historique bancaire de l'utilisateur.
-# 2. Calculer sa capacité de remboursement.
-# 3. Récupérer un score de solvabilité (Mocké en Phase 1).
+"""
+Bank API Simulation Tool
+------------------------
+Simulates interaction with a banking system to retrieve user financial data
+such as income, debts, and contract type.
+"""
 
 async def get_bank_data(user_id: str):
     mock_db = {
