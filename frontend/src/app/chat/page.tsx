@@ -134,7 +134,7 @@ export default function ChatPage() {
                 </div>
 
                 {/* Chat Messages Container */}
-                <div className={`${negotiationState ? '' : 'flex-1 overflow-y-auto'} py-8 custom-scrollbar space-y-8 px-2 scroll-smooth`}>
+                <div className="flex-1 overflow-y-auto py-8 custom-scrollbar space-y-8 px-2 scroll-smooth">
                     <AnimatePresence initial={false}>
                         {messages.map((m, index) => (
                             <motion.div
@@ -230,100 +230,97 @@ export default function ChatPage() {
                             </div>
                         </motion.div>
                     )}
+                    {/* Negotiation Card inside chat flow */}
+                    {negotiationState && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="relative z-10"
+                        >
+                            <NegotiationCard
+                                sessionId={negotiationState.sessionId}
+                                initialOffer={negotiationState.initialOffer}
+                                maxRounds={negotiationState.maxRounds}
+                                currentRound={negotiationState.currentRound}
+                                onNegotiationUpdate={handleNegotiationUpdate}
+                                onReset={handleNegotiationReset}
+                            />
+                        </motion.div>
+                    )}
+
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Negotiation Card Container with Glow */}
-                {negotiationState && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 40 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mb-4 relative"
-                    >
-                        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-[2rem] blur-xl opacity-20" />
-                        <NegotiationCard
-                            sessionId={negotiationState.sessionId}
-                            initialOffer={negotiationState.initialOffer}
-                            maxRounds={negotiationState.maxRounds}
-                            currentRound={negotiationState.currentRound}
-                            onNegotiationUpdate={handleNegotiationUpdate}
-                            onReset={handleNegotiationReset}
-                        />
-                    </motion.div>
-                )}
+                {/* Premium Input Area - Now always visible */}
+                <div className="pb-8 pt-4">
+                    <form onSubmit={handleSubmit} className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-[2.5rem] blur-2xl group-focus-within:opacity-100 opacity-0 transition-opacity duration-700" />
 
-                {/* Premium Input Area */}
-                {!negotiationState && (
-                    <div className="pb-8 pt-4">
-                        <form onSubmit={handleSubmit} className="relative group">
-                            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-[2.5rem] blur-2xl group-focus-within:opacity-100 opacity-0 transition-opacity duration-700" />
+                        <div className="relative flex items-center gap-3 bg-[#111111]/90 backdrop-blur-2xl border border-white/10 rounded-3xl p-3 focus-within:border-blue-500/50 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all duration-500 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                            <div className="hidden sm:flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 border border-white/10 text-white/40">
+                                <Sparkles className="w-5 h-5" />
+                            </div>
 
-                            <div className="relative flex items-center gap-3 bg-[#111111]/90 backdrop-blur-2xl border border-white/10 rounded-3xl p-3 focus-within:border-blue-500/50 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all duration-500 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                                <div className="hidden sm:flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 border border-white/10 text-white/40">
-                                    <Sparkles className="w-5 h-5" />
-                                </div>
+                            <input
+                                type="text"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder="Posez votre question ou proposez un prix..."
+                                className="flex-1 bg-transparent border-none focus:ring-0 text-white px-2 py-3 placeholder:text-white/20 text-[15px] font-medium"
+                                disabled={isLoading}
+                            />
 
-                                <input
-                                    type="text"
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    placeholder="Posez votre question ou proposez un prix..."
-                                    className="flex-1 bg-transparent border-none focus:ring-0 text-white px-2 py-3 placeholder:text-white/20 text-[15px] font-medium"
-                                    disabled={isLoading}
-                                />
+                            <button
+                                type="submit"
+                                disabled={!input.trim() || isLoading}
+                                className={`relative flex items-center justify-center w-14 h-14 rounded-2xl transition-all duration-500 overflow-hidden ${!input.trim() || isLoading
+                                    ? 'bg-white/5 text-white/10'
+                                    : 'bg-blue-600 text-white shadow-[0_0_30px_rgba(37,99,235,0.4)] hover:scale-105 active:scale-95 group/btn'
+                                    }`}
+                            >
+                                {isLoading ? (
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                ) : (
+                                    <>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                                        <Send className="w-6 h-6 relative z-10" />
+                                    </>
+                                )}
+                            </button>
+                        </div>
 
-                                <button
-                                    type="submit"
-                                    disabled={!input.trim() || isLoading}
-                                    className={`relative flex items-center justify-center w-14 h-14 rounded-2xl transition-all duration-500 overflow-hidden ${!input.trim() || isLoading
-                                        ? 'bg-white/5 text-white/10'
-                                        : 'bg-blue-600 text-white shadow-[0_0_30px_rgba(37,99,235,0.4)] hover:scale-105 active:scale-95 group/btn'
-                                        }`}
-                                >
-                                    {isLoading ? (
-                                        <Loader2 className="w-6 h-6 animate-spin" />
-                                    ) : (
-                                        <>
-                                            <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
-                                            <Send className="w-6 h-6 relative z-10" />
-                                        </>
-                                    )}
+                        {/* Utility Toolbar */}
+                        <div className="flex justify-between mt-4 px-4">
+                            <div className="flex items-center gap-6">
+                                <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest flex items-center gap-2">
+                                    <Info className="w-3.5 h-3.5 text-blue-400" />
+                                    Appuyez sur Entrée
+                                </p>
+                                <div className="h-4 w-px bg-white/5" />
+                                <button type="button" className="text-[10px] text-white/20 hover:text-blue-400 font-bold uppercase tracking-widest transition-colors flex items-center gap-1.5">
+                                    <MessageCircle className="w-2.5 h-2.5" />
+                                    Suggestions
                                 </button>
                             </div>
-
-                            {/* Utility Toolbar */}
-                            <div className="flex justify-between mt-4 px-4">
-                                <div className="flex items-center gap-6">
-                                    <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest flex items-center gap-2">
-                                        <Info className="w-3.5 h-3.5 text-blue-400" />
-                                        Appuyez sur Entrée
-                                    </p>
-                                    <div className="h-4 w-px bg-white/5" />
-                                    <button type="button" className="text-[10px] text-white/20 hover:text-blue-400 font-bold uppercase tracking-widest transition-colors flex items-center gap-1.5">
-                                        <MessageCircle className="w-2.5 h-2.5" />
-                                        Suggestions
-                                    </button>
-                                </div>
-                                <div className="flex gap-6">
-                                    <button
-                                        type="button"
-                                        onClick={() => sendMessage("[AUTO_NEGOTIATE] Force restart")}
-                                        className="text-[10px] text-white/20 hover:text-blue-400 font-bold uppercase tracking-widest transition-colors"
-                                    >
-                                        Relancer
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setInput('')}
-                                        className="text-[10px] text-white/20 hover:text-red-400 font-bold uppercase tracking-widest transition-colors"
-                                    >
-                                        Effacer
-                                    </button>
-                                </div>
+                            <div className="flex gap-6">
+                                <button
+                                    type="button"
+                                    onClick={() => sendMessage("[AUTO_NEGOTIATE] Force restart")}
+                                    className="text-[10px] text-white/20 hover:text-blue-400 font-bold uppercase tracking-widest transition-colors"
+                                >
+                                    Relancer
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setInput('')}
+                                    className="text-[10px] text-white/20 hover:text-red-400 font-bold uppercase tracking-widest transition-colors"
+                                >
+                                    Effacer
+                                </button>
                             </div>
-                        </form>
-                    </div>
-                )}
+                        </div>
+                    </form>
+                </div>
             </div>
         </main>
     );
@@ -423,7 +420,7 @@ export default function ChatPage() {
 
     return (
         <ProtectedRoute>
-            <div className={`flex ${negotiationState ? 'min-h-screen overflow-y-auto custom-scrollbar' : 'h-screen overflow-hidden'} bg-[#020205]/95`}>
+            <div className="flex h-screen overflow-hidden bg-[#020205]/95">
                 {sidebarContent}
                 <div className="flex-1 flex flex-col relative overflow-hidden">
                     <Navbar />
