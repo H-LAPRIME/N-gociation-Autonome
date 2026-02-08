@@ -30,3 +30,6 @@ class BaseOmegaAgent:
 
     def run(self, message: str):
         return self.agent.run(message)
+
+    async def arun(self, message: str):
+        return await self.agent.arun(message)

@@ -1,37 +1,66 @@
-# OMEGA : Système d'Orchestration Agentique
+# OMEGA - L'Intelligence Artificielle au Service de la Négociation Automobile
 
-OMEGA est une plateforme backend robuste basée sur **FastAPI** et le framework **Agno**, conçue pour automatiser les cycles de négociation de véhicules via une architecture multi-agents.
+OMEGA est une plateforme révolutionnaire qui transforme l'expérience d'achat et de reprise de véhicules grâce à un système multi-agents sophistiqué. Conçu pour les showrooms modernes, OMEGA automatise l'analyse financière, l'estimation de marché et la négociation stratégique.
 
-## 🚀 Équipe & Rôles
+## 🌟 Vision du Projet
 
-Le projet est divisé en 5 pôles de développement :
+Dans un marché automobile saturé, OMEGA apporte :
+- **Transparence** : Des estimations basées sur des données réelles du marché marocain.
+- **Rapidité** : Une négociation multi-tours fluide et automatisée.
+- **Personnalisation** : Des offres financières adaptées au profil réel du client.
 
-1.  **Moustapha** (`Moustapha_Tasks.md`) : Fondation FastAPI, Profilage Utilisateur & API Bancaire.
-2.  **Reda** (`Reda_Tasks.md`) : Évaluation du véhicule (Valuation) & Scraper de données marché.
-3.  **Mohammed** (`Mohammed_Tasks.md`) : Analyse du marché, Gestion des stocks SQL & Tendances.
-4.  **Mouad** (`Mouad_Tasks.md`) : **Orchestrateur Central** & Intelligence de Négociation.
-5.  **Halima** (`Halima_Tasks.md`) : Structuration de l'offre finale & Validation des contraintes Business.
+## 🏗️ Architecture du Système
 
-## 🛠️ Structure du Projet
+```mermaid
+graph TD
+    User((Utilisateur)) <--> Frontend[Frontend Next.js]
+    Frontend <--> Backend[Backend FastAPI]
+    
+    subgraph "OMEGA Brain (Multi-Agent System)"
+        Backend <--> Orchestrator{Orchestrator Agent}
+        Orchestrator <--> Profile[User Profile Agent]
+        Orchestrator <--> Market[Market Analysis Agent]
+        Orchestrator <--> Valuation[Valuation Agent]
+        Orchestrator <--> Negotiator[Negotiation Agent]
+    end
+    
+    subgraph "Tools & Data"
+        Profile <--> BankAPI[(Bank Simulation)]
+        Market <--> CSV[(Inventory CSV)]
+        Valuation <--> Scraper[Moteur.ma Scraper]
+        Negotiator <--> PDF[PDF Generator]
+    end
+```
 
-- `app/main.py` : Point d'entrée de l'API.
-- `app/agents/` : Définition des comportements de chaque agent.
-- `app/tools/` : Outils métiers (Scrapers, APIs, SQL).
-- `app/core/` : Configuration globale et sécurité.
+## 📂 Structure du Projet
 
-## ⚙️ Installation
+-   **/Backend**: Moteur Python (FastAPI + Multi-Agents).
+-   **/frontend**: Interface utilisateur moderne (Next.js + Tailwind).
+-   **/docs**: Documentation technique additionnelle (si applicable).
 
-1.  **Prérequis** : Python 3.9+ possessé.
-2.  **Installation des dépendances** :
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  **Configuration** : Copiez le fichier `.env.example` (à créer) vers `.env` et remplissez vos clés API.
-4.  **Démarrage** :
-    ```bash
-    uvicorn app.main:app --reload
-    ```
+## 🚀 Installation Rapide
 
-## 🧠 Workflow Agentique
-Le système suit un cycle bidirectionnel :
-`Utilisateur` -> `Orchestrateur` -> `Agents Spécialisés` -> `Négociation` -> `Offre` -> `RETOUR Orchestrateur` -> `Réponse Client`.
+```bash
+# Clone the repository
+git clone https://github.com/H-LAPRIME/N-gociation-Autonome.git
+
+# Setup Backend
+cd Backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# Setup Frontend
+cd ../frontend
+npm install
+npm run dev
+```
+
+## 🏆 Hackathon Edition
+
+Ce projet a été structuré pour une lisibilité maximale :
+- **Code documenté** : Chaque agent, service et outil possède des docstrings claires.
+- **Modularité** : Séparation stricte des responsabilités entre agents.
+- **Esthétique Premium** : Une UI conçue pour impressionner dès le premier regard.
+
+---
+*Développé avec passion pour l'innovation automobile.*

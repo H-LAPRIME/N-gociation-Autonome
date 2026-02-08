@@ -1,0 +1,177 @@
+.hero {
+    position: relative;
+    min-height: 100vh;
+    padding-top: 120px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.glow {
+    position: absolute;
+    top: 10%;
+    right: -5%;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 50%, transparent 100%);
+    filter: blur(80px);
+    z-index: -1;
+    animation: pulse 10s infinite alternate;
+}
+
+@keyframes pulse {
+    from {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+
+    to {
+        transform: scale(1.2);
+        opacity: 0.8;
+    }
+}
+
+.container {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 4rem;
+    align-items: center;
+}
+
+.title {
+    font-size: 4rem;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+    letter-spacing: -0.02em;
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: 2.5rem;
+    max-width: 540px;
+}
+
+.cta {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.primaryBtn {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+}
+
+.secondaryBtn {
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: var(--transition-fast);
+}
+
+.secondaryBtn:hover {
+    gap: 0.8rem;
+}
+
+.visual {
+    position: relative;
+}
+
+.card {
+    width: 100%;
+    aspect-ratio: 4/3;
+    padding: 1.5rem;
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-20px);
+    }
+}
+
+.cardHeader {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--glass-border);
+}
+
+.cardContent {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+}
+
+.mockLine {
+    height: 10px;
+    border-radius: 5px;
+    background: var(--glass-border);
+}
+
+.mockChart {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    padding-top: 1rem;
+}
+
+.bar {
+    flex: 1;
+    background: var(--gradient-primary);
+    opacity: 0.5;
+    border-radius: 4px 4px 0 0;
+    transition: var(--transition-normal);
+}
+
+.bar:hover {
+    opacity: 1;
+    transform: scaleY(1.05);
+}
+
+@media (max-width: 968px) {
+    .container {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .subtitle {
+        margin: 0 auto 2.5rem;
+    }
+
+    .cta {
+        justify-content: center;
+    }
+
+    .visual {
+        margin-top: 4rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .title {
+        font-size: 3rem;
+    }
+}

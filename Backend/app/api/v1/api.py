@@ -1,8 +1,13 @@
-from fastapi import APIRouter
-from .valuation import router as valuation_router
+from fastapi import APIRouter, Query
+
+from app.tools import sql_inventory
+from app.api.v1.endpoints import market
+
+router = APIRouter()
+
+# Include the market router
+router.include_router(market.router)
 
 
-api_router = APIRouter()
 
-api_router.include_router(valuation_router, prefix="/valuation", tags=["Valuation"])
 

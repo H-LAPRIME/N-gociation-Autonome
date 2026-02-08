@@ -78,4 +78,13 @@ dmypy.json
 *.log
 logs/
 
+# Generated Data
+Backend/data/
+Backend/app/data/
+*.pdf
+*.json
+!package.json
+!tsconfig.json
+!composer.json
+
 test_reda.py
