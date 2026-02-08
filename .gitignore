@@ -78,4 +78,4 @@ dmypy.json
 *.log
 logs/
 
-test_valuation_agent.py
+test_reda.py
