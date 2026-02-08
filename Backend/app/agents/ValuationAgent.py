@@ -1,104 +1,95 @@
-# Reda: Valuation Agent
+# Reda: Vehicle State Agent (Rule-Based)
+# Responsibility: Evaluate the global condition of a vehicle (state 1–5) using predefined rules
+# Output: JSON { "state": int }
 
-# Responsibility: Accurately estimate the value of the trade-in vehicle.
-# Tools: car_scraper.py
-# Tasks:
-# 1. Implement appraise_vehicle() to fetch market data using car_scraper.
-# 2. Add logic to adjust price based on mileage, age, and maintenance history.
-# 3. Output a precise ValuationReport with min/max suggested price.
-
-import re
-from .base import BaseOmegaAgent
 import json
-from app.tools.car_scraper import get_vehicle_estimation
+from .base import BaseOmegaAgent
+from datetime import datetime
+
 
 class ValuationAgent(BaseOmegaAgent):
     """
-    Agent for Vehicle Appraisal & Valuation.
+    Rule-Based Agent for Vehicle Condition Evaluation (État).
     
-    This agent estimates the market value of trade-in vehicles using
-    web scraping techniques and adjust the price based on condition,
-    mileage, and age.
+    Evaluates the global condition of a vehicle based on rules.
+    Returns a state score between 1 (very poor) and 5 (excellent).
     """
+
     def __init__(self):
         super().__init__(
-            name="ValuationAgent",
+            name="VehicleStateAgent",
             instructions=[
-                "Tu es un agent d’estimation de prix de voitures d’occasion au Maroc.",
-                "Tu reçois un JSON décrivant une voiture.",
-                "ÉTAPE 1 : Utilise l'outil 'get_vehicle_estimation' pour obtenir une base de prix du marché (Argus).",
-                "ÉTAPE 2 : Analyse les détails du véhicule (année, kilométrage, état, accidents, entretien).",
-                "ÉTAPE 3 : Ajuste le prix du marché en fonction de l'état global (1 mauvais - 5 excellent) et des autres facteurs.",
-                "ÉTAPE 4 : Calcule un prix final en dirhams marocains (MAD).",
-                "ÉTAPE 5 : Fournis une fourchette de prix (±10%).",
-                "Retourne UNIQUEMENT un JSON valide correspondant au format demandé."
-            ],
-            tools=[get_vehicle_estimation]
+                "Évaluation de l’état global d’un véhicule selon règles prédéfinies.",
+                "Entrée : JSON avec année, kilométrage, accidents, entretien, nombre de propriétaires.",
+                "Retourne un score d’état entier entre 1 (très mauvais) et 5 (excellent).",
+                "Retourne STRICTEMENT un JSON valide.",
+                "Aucun texte, aucune explication."
+            ]
         )
-    
-    def extract_json(self, text: str) -> str:
-        """
-        Extrait un JSON depuis un bloc Markdown ```json ... ```
-        ou retourne le texte tel quel s'il est déjà brut.
-        """
-        text = text.strip()
 
-        match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
+    def appraise_vehicle(self, car_json: dict) -> dict:
+        """
+        Rule-based evaluation of vehicle condition.
+        
+        Input example:
+        {
+            "year": 2018,
+            "mileage": 45000,
+            "accidents": 1,
+            "maintenance": "regular",  # "regular", "irregular", "poor"
+            "owners": 1
+        }
+        
+        Output example:
+        { "state": 4 }
+        """
 
-        return text
-    
-    async def appraise_vehicle(self, car_json: dict) -> dict:
-        """
-        Reçoit un JSON voiture et retourne une fourchette de prix.
-        Direct execution via Python (No LLM for speed).
-        """
-        brand = car_json.get("brand", "Unknown")
-        model = car_json.get("model", "Unknown")
-        year = car_json.get("year", 2020)
+        # Default state
+        state = 5
+
+        # --- Rule 1: Age ---
+        current_year = datetime.now().year
+        age = current_year - car_json.get("year", current_year)
+        if age > 15:
+            state -= 2
+        elif age > 10:
+            state -= 1
+
+        # --- Rule 2: Mileage ---
         mileage = car_json.get("mileage", 0)
-        condition = car_json.get("condition", "Bon")
-        
-        # 1. Get base market price from scraper
-        estimation = await get_vehicle_estimation(model, year, mileage)
-        base_price = estimation.get("estimated_price", 0)
-        
-        # 2. Apply condition adjustment (Pure Python logic)
-        condition_map = {
-            "Excellent": 1.10,
-            "Bon": 1.0,
-            "Moyen": 0.90,
-            "Mauvais": 0.80,
-            "Non roulant": 0.50
-        }
-        # Fuzzy max matching for condition string
-        factor = 1.0
-        for k, v in condition_map.items():
-            if k.lower() in str(condition).lower():
-                factor = v
-                break
-                
-        adjusted_price = base_price * factor
-        
-        # 3. Calculate range (±10%)
-        price_min = round(adjusted_price * 0.9, -2)
-        price_max = round(adjusted_price * 1.1, -2)
-        
-        # 4. Determine state score (1-5)
-        state_score = int(factor * 4) + 1 # Rough mapping: 0.5->3, 0.8->4, 1.0->5. Adjustable.
-        state_score = min(max(state_score, 1), 5)
+        if mileage > 200_000:
+            state -= 2
+        elif mileage > 150_000:
+            state -= 1
+        elif mileage > 100_000:
+            state -= 0  # neutral
+        elif mileage < 20_000:
+            state += 1
 
-        return {
-            "state": state_score,
-            "market_base_price": base_price,
-            "price_range": {
-                "min": price_min,
-                "max": price_max
-            },
-            "currency": "MAD",
-            "condition_factor": factor,
-            "note": "Estimated via Direct Market Data"
-        }
-        
-    
+        # --- Rule 3: Accidents ---
+        accidents = car_json.get("accidents", 0)
+        if accidents >= 3:
+            state -= 2
+        elif accidents == 2:
+            state -= 1
+        elif accidents == 1:
+            state -= 0  # minor effect
+
+        # --- Rule 4: Maintenance ---
+        maintenance = car_json.get("maintenance", "regular").lower()
+        if maintenance == "poor":
+            state -= 2
+        elif maintenance == "irregular":
+            state -= 1
+
+        # --- Rule 5: Number of Owners ---
+        owners = car_json.get("owners", 1)
+        if owners > 3:
+            state -= 2
+        elif owners == 3:
+            state -= 1
+
+        # Clamp state between 1 and 5
+        state = max(1, min(5, state))
+
+        return {"state": state}

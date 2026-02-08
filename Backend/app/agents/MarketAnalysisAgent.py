@@ -84,7 +84,7 @@ class MarketAnalysisAgent(BaseOmegaAgent):
         Args:
             model: Le modèle de véhicule recherché
             brand: La marque (correspond à 'mark' dans le CSV)
-            max_price: Prix maximum estimé
+            max_price: Prix maximum estimé 
             category: Catégorie de véhicule (défaut: "SUV")
             
         Returns:

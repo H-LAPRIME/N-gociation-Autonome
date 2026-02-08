@@ -6,18 +6,22 @@ from agno.models.mistral import MistralChat
 
 class BaseOmegaAgent:
     def __init__(
-        self, 
-        name: str, 
-        instructions: List[str], 
-        tools: Optional[List] = None
+        self,
+        name: str,
+        instructions: List[str],
+        tools: Optional[List] = None,
+        temperature: float = 0.2,
+        max_tokens: int = 512
     ):
         mistral_api_key = os.getenv("MISTRAL_API_KEY")
         if not mistral_api_key:
-            raise ValueError("MISTRAL_API_KEY non défini dans les variables d'environnement.")
+            raise ValueError("MISTRAL_API_KEY non défini.")
 
         mistral_model = MistralChat(
             id="mistral-large-latest",
-            api_key=mistral_api_key # replace with ur key for now :(
+            api_key=mistral_api_key,
+            temperature=temperature,
+            max_tokens=max_tokens
         )
 
         self.agent = Agent(
@@ -25,7 +29,7 @@ class BaseOmegaAgent:
             model=mistral_model,
             instructions=instructions,
             tools=tools,
-            markdown=True
+            markdown=False
         )
 
     def run(self, message: str):
