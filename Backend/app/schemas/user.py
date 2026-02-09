@@ -55,6 +55,9 @@ class User(BaseModel):
     behavior: Optional[BehavioralAnalysis] = None
     trade_in: Optional[TradeInInfo] = None
 
+    class Config:
+        from_attributes = True
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str

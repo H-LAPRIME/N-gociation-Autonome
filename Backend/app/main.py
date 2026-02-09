@@ -52,6 +52,8 @@ os.makedirs("data/contracts", exist_ok=True)
 app.mount("/contracts", StaticFiles(directory="data/contracts"), name="contracts")
 
 from app.services.auth_service import get_current_user
+from app.db_config import get_async_db
+from app.tools.user_service import get_user_complete
 
 # --- ROOT ENDPOINT ---
 
@@ -94,14 +96,55 @@ async def login(user: UserLogin):
     }
 
 @app.get("/user/profile")
-async def get_user_profile(current_user: Dict = Depends(get_current_user)):
-    return User(**current_user)
+async def get_user_profile(
+    current_user: Dict = Depends(get_current_user),
+    db = Depends(get_async_db)
+):
+    """Get complete user profile from PostgreSQL database."""
+    try:
+        user_data = await get_user_complete(current_user["user_id"], db)
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found in database")
+        return user_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/user/profile")
-async def update_user_profile(user_update: Dict, current_user: Dict = Depends(get_current_user)):
+async def update_user_profile(
+    user_update: Dict, 
+    current_user: Dict = Depends(get_current_user),
+    db = Depends(get_async_db)
+):
+    """Update user profile in PostgreSQL database."""
     try:
-        updated_user = auth_service.update_user(current_user["user_id"], user_update)
+        from app.tools.user_service import update_user_profile as update_profile_service
+        from app.schemas import User as UserSchema, Financials, Preferences, BehavioralAnalysis, TradeInInfo
+        
+        # Convert dict to UserSchema
+        profile_data = UserSchema(
+            user_id=current_user["user_id"],
+            username=current_user.get("username", ""),
+            email=current_user.get("email", ""),
+            full_name=current_user.get("full_name", ""),
+            phone_number=user_update.get("phone_number"),
+            city=user_update.get("city"),
+            income_mad=user_update.get("income_mad", 0),
+            risk_level=user_update.get("risk_level"),
+            financials=Financials(**user_update.get("financials", {})) if user_update.get("financials") else None,
+            preferences=Preferences(**user_update.get("preferences", {})) if user_update.get("preferences") else None,
+            behavior=BehavioralAnalysis(**user_update.get("behavior", {})) if user_update.get("behavior") else None,
+            trade_in=TradeInInfo(**user_update.get("trade_in", {})) if user_update.get("trade_in") else None,
+        )
+        
+        success = await update_profile_service(current_user["user_id"], profile_data, db)
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to update user profile")
+        
+        # Return updated profile
+        updated_user = await get_user_complete(current_user["user_id"], db)
         return {"success": True, "user": updated_user}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
