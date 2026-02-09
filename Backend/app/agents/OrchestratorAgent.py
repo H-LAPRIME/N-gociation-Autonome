@@ -14,6 +14,7 @@ from app.database.chat_db import chat_db
 from app.schemas.negotiation_session import NegotiationSessionCreate
 from app.schemas.chat_session import ChatMessage
 from app.services.auth_service import get_user_by_id
+from app.db_config import get_async_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -570,7 +571,14 @@ class OrchestratorAgent:
             
             try:
                 # Pass both query and current state to assessment agent
-                user_profile = await self.user_agent.assess_fiscal_health(user_id, user_query, current_profile_data=profile_state)
+                async for db in get_async_db():
+                    user_profile = await self.user_agent.assess_fiscal_health(
+                        user_id=user_id,
+                        user_input=user_query,
+                        db=db
+                    )
+                    break 
+                #! user_profile = await self.user_agent.assess_fiscal_health(user_id, user_query, current_profile_data=profile_state)
                 logger.info(f"👤 User profile assessed ({time.time() - step_start:.2f}s)")
             except Exception as e:
                 logger.error(f"❌ Error assessing user profile: {e}", exc_info=True)
