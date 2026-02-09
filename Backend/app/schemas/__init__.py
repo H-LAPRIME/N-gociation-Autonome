@@ -1,4 +1,4 @@
-from .user import User, RiskLevel, Financials, Preferences, BehavioralAnalysis, UserLogin, UserCreate
+from .user import User, RiskLevel, Financials, Preferences, BehavioralAnalysis, UserLogin, UserCreate, TradeInInfo
 from .profile_req import AnalyzeProfileRequest
 
 __all__ = [
@@ -9,5 +9,6 @@ __all__ = [
     "Financials",
     "Preferences",
     "BehavioralAnalysis",
-    "AnalyzeProfileRequest"
+    "AnalyzeProfileRequest",
+    "TradeInInfo"
 ]

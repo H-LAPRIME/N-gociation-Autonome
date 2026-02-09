@@ -1,17 +1,24 @@
+"""
+User Profile Agent - Fully Database Integrated
+"""
 from app.agents.base import BaseOmegaAgent
 from app.tools.bank_api import get_bank_data
-from app.schemas.user import User, RiskLevel, Financials, Preferences, BehavioralAnalysis, TradeInInfo
-from typing import Dict, Any
+from app.tools.user_service import get_user_complete, merge_user_profile
+from app.schemas import User, RiskLevel, Financials, Preferences, BehavioralAnalysis, TradeInInfo
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, Any, Optional
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class UserProfileAgent(BaseOmegaAgent):
     """
     Expert Agent for User Profiling & Risk Assessment.
-    
-    This agent analyzes user messages to extract sentiment, urgency, 
-    and vehicle preferences. it also interacts with bank APIs to
-    calculate fiscal health (DTI, Risk Level) and determine maximum budget.
+    Fully integrated with database - reads existing data and saves updates.
     """
+    
     def __init__(self):
         super().__init__(
             name="UserProfileAgent",
@@ -29,20 +36,83 @@ class UserProfileAgent(BaseOmegaAgent):
                 "- Trade-in vehicle details (brand, model, year, mileage, condition, accidents, maintenance, owners)",
                 "Always respond in valid JSON format.",
             ],
-            tools=[get_bank_data] 
+            tools=[] 
         )
-        # Detailed Agno configuration
         self.agent.role = "Moroccan Car-Buying Consultant & Financial Analyst"
         self.agent.description = "Expert in extracting and analyzing user profiles for automobile financing and purchasing in Morocco."
 
-    async def assess_fiscal_health(self, user_id: int, user_input: str, current_profile_data: Dict = None) -> User:
-        # 1. Get bank data
-        bank_response = await get_bank_data(user_id)
-        data = bank_response["data"]
+    async def assess_fiscal_health(
+        self, 
+        user_id: int, 
+        user_input: str, 
+        db: AsyncSession
+    ) -> Optional[User]:
+        """
+        Main method: Analyze user input, merge with existing profile, calculate financials, save to DB
+        
+        Args:
+            user_id: User ID
+            user_input: User's message to analyze
+            db: Database session
+            
+        Returns:
+            Updated User profile or None if error
+        """
+        try:
+            logger.info(f"🔍 Analyzing profile for user {user_id}")
+            
+            # Step 1: Get existing user profile from DB
+            existing_profile = await get_user_complete(user_id, db)
+            
+            if not existing_profile:
+                logger.error(f"❌ User {user_id} not found in database")
+                return None
+            
+            # Step 2: Get bank/financial data from DB
+            bank_response = await get_bank_data(user_id, db)
+            
+            if bank_response["status"] != "success":
+                logger.warning(f"⚠️ Could not get bank data for user {user_id}")
+                bank_data = {}
+            else:
+                bank_data = bank_response["data"]
+            
+            # Step 3: Extract new information from user input using AI
+            ai_extracted = await self._extract_from_input(user_input, existing_profile)
+            
+            # Step 4: Build new profile data from AI extraction
+            new_profile = self._build_profile_from_extraction(
+                user_id=user_id,
+                existing=existing_profile,
+                ai_data=ai_extracted,
+                bank_data=bank_data
+            )
+            
+            # Step 5: Merge new profile with existing (smart merge)
+            merged_profile = await merge_user_profile(user_id, new_profile, db)
+            
+            if not merged_profile:
+                logger.error(f"❌ Failed to merge profile for user {user_id}")
+                return None
+            
+            logger.info(f"✅ Profile updated successfully for user {user_id}")
+            return merged_profile
+            
+        except Exception as e:
+            logger.error(f"❌ Error in assess_fiscal_health: {e}", exc_info=True)
+            return None
 
-        # 2. Comprehensive AI analysis prompt
+    async def _extract_from_input(self, user_input: str, existing_profile: User) -> Dict[str, Any]:
+        """
+        Use AI to extract information from user message
+        """
         analysis_prompt = f"""
 Analyze this user message and extract ALL available information: "{user_input}"
+
+Current user profile context:
+- City: {existing_profile.city or "Unknown"}
+- Preferences: {existing_profile.preferences.dict() if existing_profile.preferences else "None"}
+- Trade-in: {existing_profile.trade_in.dict() if existing_profile.trade_in else "None"}
 
 Return a JSON object with the following structure (use null for missing information):
 {{
@@ -78,73 +148,42 @@ Examples of sentiment indicators: complaints, excitement, frustration, satisfact
 Be precise and only extract what is explicitly mentioned or strongly implied.
 """
 
-        # 3. Get AI analysis
-        ai_res = await self.agent.arun(analysis_prompt)
-        
-        # 4. Parse AI response
-        ai_data = self._parse_ai_response(ai_res.content)
-        
-        # 4b. MERGE with existing profile data (current_profile_data)
-        if current_profile_data:
-            # Helper to merge if new is null/empty but old exists
-            def text_merge(new, old): return new if new else old
-            def list_merge(new, old): return list(set((new or []) + (old or [])))
-            
-            # Extract previous extraction if available
-            prev_extract = current_profile_data.get('profil_extraction', {})
-            
-            # Merge Top-level fields
-            ai_data['city'] = text_merge(ai_data.get('city'), prev_extract.get('city'))
-            ai_data['budget_mentioned'] = text_merge(ai_data.get('budget_mentioned'), prev_extract.get('budget_mentioned'))
-            
-            # Merge vehicle preferences
-            prev_prefs = prev_extract.get('vehicle_preferences', {})
-            ai_data['vehicle_category'] = text_merge(ai_data.get('vehicle_category'), prev_prefs.get('category'))
-            ai_data['brands'] = list_merge(ai_data.get('brands'), prev_prefs.get('brands'))
-            
-            # Merge Trade-in (Critical for the loop fix)
-            prev_trade = prev_extract.get('trade_in_vehicle_details', {})
-            new_trade = ai_data.get('trade_in') or {}
-            
-            merged_trade = {
-                "brand": text_merge(new_trade.get('brand'), prev_trade.get('brand')),
-                "model": text_merge(new_trade.get('model'), prev_trade.get('model')),
-                "year": text_merge(new_trade.get('year'), prev_trade.get('year')),
-                "mileage": text_merge(new_trade.get('mileage'), prev_trade.get('mileage')),
-                "condition": text_merge(new_trade.get('condition'), prev_trade.get('condition')),
-                "accidents": text_merge(new_trade.get('accidents'), prev_trade.get('accidents')),
-                "maintenance": text_merge(new_trade.get('maintenance'), prev_trade.get('maintenance')),
-                "owners": text_merge(new_trade.get('owners'), prev_trade.get('owners'))
-            }
-            # Only set trade_in if there is actual data
-            if any(merged_trade.values()):
-                ai_data['trade_in'] = merged_trade
+        try:
+            ai_res = await self.agent.arun(analysis_prompt)
+            return self._parse_ai_response(ai_res.content)
+        except Exception as e:
+            logger.error(f"❌ AI extraction failed: {e}")
+            return {}
 
-        # 5. Calculate financial metrics (Prioritize merged profile over mock simulation)
-        prev_extract = current_profile_data.get('profil_extraction', {}) if current_profile_data else {}
+    def _build_profile_from_extraction(
+        self, 
+        user_id: int,
+        existing: User,
+        ai_data: Dict[str, Any],
+        bank_data: Dict[str, Any]
+    ) -> User:
+        """
+        Build complete user profile from AI extraction + bank data + calculations
+        """
+        # Get financial metrics from bank data (with fallbacks)
+        income = bank_data.get("monthly_income") or existing.income_mad or 0
+        debts = bank_data.get("monthly_debt_payments") or (existing.financials.current_debts_mad if existing.financials else 0)
+        bank_seniority = bank_data.get("bank_seniority_months") or (existing.financials.bank_seniority_months if existing.financials else 0)
+        is_blacklisted = bank_data.get("is_blacklisted") or (existing.financials.is_blacklisted if existing.financials else False)
+        contract_type = bank_data.get("contract_type") or (existing.financials.contract_type if existing.financials else None)
         
-        # Use bank data if valid, otherwise fallback to persisted profile
-        income = data.get("monthly_income") or prev_extract.get("monthly_income") or 0
-        debts = data.get("monthly_debt_payments") or prev_extract.get("monthly_debt_payments") or 0
-        bank_seniority = data.get("bank_seniority_months", 0)
-        is_blacklisted = data.get("is_blacklisted", False)
-        
-        # Priority for contract: Merged extraction > Bank API
-        contract_type = prev_extract.get("contract_type") or data.get("contract_type")
-        
-        # Calculate DTI (Debt-to-Income ratio)
-        # If income is 0 or missing, assume 0 DTI (benefit of doubt) instead of 1.0 (high risk)
+        # Calculate DTI
         dti = (debts / income) if income and income > 0 else 0.0
         
-        # 6. Determine risk level based on multiple factors
+        # Calculate risk level
         risk_level = self._calculate_risk_level(
             dti=dti,
             is_blacklisted=is_blacklisted,
             contract_type=contract_type,
             bank_seniority=bank_seniority
         )
-
-        # 7. Calculate max budget if not explicitly mentioned
+        
+        # Calculate max budget
         max_budget = self._calculate_max_budget(
             income=income,
             debts=debts,
@@ -152,29 +191,29 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
             mentioned_budget=ai_data.get("budget_mentioned"),
             service_type=ai_data.get("service_type")
         )
-
-        # 8. Calculate monthly limit for rental/lease
+        
+        # Calculate monthly limit
         monthly_limit = self._calculate_monthly_limit(
             income=income,
             debts=debts,
             mentioned_monthly=ai_data.get("monthly_budget_mentioned")
         )
-
-        # 9. Determine preferred payment method
+        
+        # Determine payment method
         preferred_payment = self._determine_payment_method(
             service_type=ai_data.get("service_type"),
             income=income,
             risk_level=risk_level
         )
-
-        # 10. Build comprehensive user profile
+        
+        # Build complete profile
         return User(
             user_id=user_id,
-            username=f"user_{user_id}",
-            email=f"user_{user_id}@omega.ma",
-            full_name="Client OMEGA",
-            phone_number=ai_data.get("phone_number"),
-            city=ai_data.get("city"),
+            username=existing.username,
+            email=existing.email,
+            full_name=existing.full_name,
+            phone_number=ai_data.get("phone_number") or existing.phone_number,
+            city=ai_data.get("city") or existing.city,
             income_mad=income,
             risk_level=risk_level,
             financials=Financials(
@@ -199,7 +238,7 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
                 flexibility=ai_data.get("flexibility_score"),
                 detected_needs=ai_data.get("detected_needs", [])
             ),
-            trade_in=TradeInInfo(**ai_data.get("trade_in", {})) if ai_data.get("trade_in") else None
+            trade_in=TradeInInfo(**ai_data.get("trade_in", {})) if ai_data.get("trade_in") and any(ai_data.get("trade_in", {}).values()) else None
         )
 
     def _parse_ai_response(self, content: str) -> Dict[str, Any]:
@@ -215,37 +254,32 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
             
             return json.loads(json_str)
         except (json.JSONDecodeError, IndexError) as e:
-            # Fallback: return empty dict if parsing fails
-            print(f"Failed to parse AI response: {e}")
+            logger.error(f"❌ Failed to parse AI response: {e}")
             return {}
 
     def _calculate_risk_level(
         self, 
         dti: float, 
         is_blacklisted: bool, 
-        contract_type: str, 
+        contract_type: Optional[str], 
         bank_seniority: int
     ) -> RiskLevel:
         """Calculate risk level based on multiple financial factors"""
         if is_blacklisted:
             return RiskLevel.HIGH
         
-        # Helper: Treat missing data leniently for demo purposes
-        # If contract_type is missing, assume it's acceptable (don't default to High Risk)
-        has_stable_contract = contract_type in ["CDI", "Fonctionnaire"] if contract_type else True 
-        
-        # High risk conditions (Only if explicit negative signals)
-        if dti >= 0.6: # Relaxed DTI threshold
+        # High risk conditions
+        if dti >= 0.6:
             return RiskLevel.HIGH
         
-        if contract_type and not has_stable_contract: # Only penalize if we KNOW it's not stable
+        if contract_type and contract_type not in ["CDI", "Fonctionnaire"]:
             return RiskLevel.HIGH
         
         # Medium risk conditions
-        if dti >= 0.40 or bank_seniority < 6: # Relaxed seniority
+        if dti >= 0.40 or bank_seniority < 6:
             return RiskLevel.MEDIUM
         
-        # Default to LOW risk for smoother demo experience if no red flags
+        # Default to LOW risk
         return RiskLevel.LOW
 
     def _calculate_max_budget(
@@ -254,8 +288,8 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
         debts: float,
         dti: float,
         mentioned_budget: Any,
-        service_type: str
-    ) -> float | None:
+        service_type: Optional[str]
+    ) -> Optional[float]:
         """Calculate maximum purchase budget"""
         # If user mentioned a budget, use it
         if mentioned_budget:
@@ -271,18 +305,14 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
         # Calculate available monthly income
         available_monthly = income - debts
         
-        # Conservative estimate: 20-30% of available income for 5-7 years
-        # Assuming typical Moroccan car loan terms
+        # Conservative estimate
         if dti < 0.3:
-            # Low DTI: can afford 30% monthly payment for 7 years
             monthly_payment = available_monthly * 0.30
             return monthly_payment * 12 * 7  # 7 years
         elif dti < 0.4:
-            # Medium DTI: can afford 25% monthly payment for 5 years
             monthly_payment = available_monthly * 0.25
             return monthly_payment * 12 * 5  # 5 years
         else:
-            # High DTI: limited budget
             monthly_payment = available_monthly * 0.20
             return monthly_payment * 12 * 5  # 5 years
 
@@ -291,34 +321,29 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
         income: float,
         debts: float,
         mentioned_monthly: Any
-    ) -> float | None:
+    ) -> Optional[float]:
         """Calculate maximum monthly payment for rental/lease"""
-        # If user mentioned a monthly budget, use it
         if mentioned_monthly:
             try:
                 return float(mentioned_monthly)
             except (ValueError, TypeError):
                 pass
         
-        # Calculate available monthly income
         available_monthly = income - debts
-        
-        # Conservative: 20-25% of available income for monthly rental
         return available_monthly * 0.25
 
     def _determine_payment_method(
         self,
-        service_type: str,
+        service_type: Optional[str],
         income: float,
         risk_level: RiskLevel
-    ) -> str | None:
+    ) -> Optional[str]:
         """Determine preferred payment method"""
         if not service_type:
             return None
         
         service_lower = service_type.lower()
         
-        # Map service type to payment method
         if "rent" in service_lower or "louer" in service_lower:
             return "Location"
         elif "lld" in service_lower:
@@ -326,7 +351,6 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
         elif "lease" in service_lower or "leasing" in service_lower:
             return "Leasing"
         elif "buy" in service_lower or "achat" in service_lower or "acheter" in service_lower:
-            # For purchase, suggest based on financial profile
             if risk_level == RiskLevel.LOW and income >= 15000:
                 return "Cash/Financing"
             else:
