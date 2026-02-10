@@ -121,6 +121,7 @@ Return a JSON object with the following structure (use null for missing informat
     "urgency_indicators": ["list of phrases indicating urgency"],
     "service_type": "Buy/Rent/Lease/LLD or null",
     "vehicle_category": "SUV/Sedan/Hatchback/Coupe/Pickup/Van or null",
+    "target_model": "The specific model name mentioned (e.g., 'Clio 4', 'Polo') or null",
     "brands": ["list of mentioned brands or empty array"],
     "fuel_type": "Diesel/Gasoline/Hybrid/Electric or null",
     "transmission": "Automatic/Manual or null",
@@ -227,6 +228,7 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
             ),
             preferences=Preferences(
                 brands=ai_data.get("brands", []),
+                model=ai_data.get("target_model"),
                 category=ai_data.get("vehicle_category"),
                 fuel_type=ai_data.get("fuel_type"),
                 transmission=ai_data.get("transmission"),

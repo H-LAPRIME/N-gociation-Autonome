@@ -316,9 +316,10 @@ class OrchestratorAgent:
         
         # Add market analysis task if preferences exist
         brand = user_profile.preferences.brands[0] if user_profile.preferences.brands else None
-        if brand or user_profile.preferences.category:
+        if brand or user_profile.preferences.category or user_profile.preferences.model:
+            logger.info(f"📈 Adding market analysis task for: {brand or user_profile.preferences.model or user_profile.preferences.category}")
             tasks.append(self.market_agent.analyze_market(
-                model=user_profile.preferences.category or "SUV",
+                model=user_profile.preferences.model or user_profile.preferences.category or "SUV",
                 brand=brand,
                 user_budget=user_profile.financials.max_budget_mad
             ))
@@ -604,10 +605,10 @@ class OrchestratorAgent:
                 task_names.append("valuation")
             
             brand = user_profile.preferences.brands[0] if user_profile.preferences.brands else None
-            if brand or user_profile.preferences.category:
-                logger.info(f"📈 Adding market analysis task for: {brand or user_profile.preferences.category}")
+            if brand or user_profile.preferences.category or user_profile.preferences.model:
+                logger.info(f"📈 Adding market analysis task for: {brand or user_profile.preferences.model or user_profile.preferences.category}")
                 tasks.append(self.market_agent.analyze_market(
-                    model=user_profile.preferences.category or "SUV",
+                    model=user_profile.preferences.model or user_profile.preferences.category or "SUV",
                     brand=brand,
                     user_budget=user_profile.financials.max_budget_mad
                 ))
@@ -631,6 +632,23 @@ class OrchestratorAgent:
                         "chat_response": "Une erreur est survenue lors de l'analyse du marché. Veuillez réessayer.",
                         "intent": "ERROR"
                     }
+
+            # --- NEW: Out of Stock Check ---
+            if market_data and market_data.get('inventory', {}).get('stock_available', 0) == 0:
+                logger.info(f"🚫 Stock zero detected for {market_data.get('target_model')}. Aborting negotiation.")
+                
+                # Use NegotiationAgent to generate a polite out-of-stock message if possible, 
+                # or just return a standard one.
+                target_model = market_data.get('target_model', 'ce modèle')
+                chat_response = f"Je suis sincèrement désolé, mais après vérification de notre inventaire en temps réel, la {target_model} n'est plus disponible actuellement dans notre showroom. Nous recevons régulièrement de nouveaux arrivages, mais pour l'instant, je ne peux pas vous proposer d'offre sur ce véhicule précis. Souhaitez-vous voir nos autres SUV disponibles ?"
+                
+                return {
+                    "status": "success",
+                    "chat_response": chat_response,
+                    "market_analysis": market_data,
+                    "intent": "OUT_OF_STOCK"
+                }
+            # -------------------------------
 
             # Create Negotiation Session
             logger.info("🏗️ Creating negotiation session...")

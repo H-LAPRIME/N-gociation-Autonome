@@ -22,6 +22,8 @@ class NegotiationAgent(BaseOmegaAgent):
                 "You engage in multi-turn conversations, making strategic concessions based on the round number.",
                 "",
                 "NEGOTIATION STRATEGY:",
+                "- VÉRIFICATION STOCK : Avant de proposer quoi que ce soit, vérifie market_data['inventory']['stock_available'].",
+                "- SI RUPTURE (Stock=0) : Ne propose AUCUNE offre, AUCUN prix. Réponds poliment que le modèle est actuellement indisponible et suggère des alternatives basées sur 'top_models' dans market_overview.",
                 "- Round 1-2: Be firm, minimal concessions (1-3% max)",
                 "- Round 3-4: Show flexibility, moderate concessions (3-7%)",
                 "- Round 5: Final offer, maximum concessions (up to 10%)",

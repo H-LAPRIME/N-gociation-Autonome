@@ -19,6 +19,7 @@ class Financials(BaseModel):
 
 class Preferences(BaseModel):
     brands: List[str] = Field(default_factory=list)
+    model: Optional[str] = None
     category: Optional[str] = None 
     fuel_type: Optional[str] = None
     transmission: Optional[str] = None

@@ -45,9 +45,13 @@ class MarketAnalysisAgent(BaseOmegaAgent):
         self.agent = Agent(
             name="MarketAnalysisAgent",
             role="Analyste Marché et Inventaire",
-            instructions= '''Tu es un expert en analyse de marché automobile avec 15 ans d'expérience.
-                Ta mission est de fournir un contexte précis sur les stocks et tendances SUV pour optimiser la négociation.
-                Tu comprends les cycles de demande, les variations saisonnières, et tu sais identifier les opportunités commerciales.''',
+            instructions= '''Tu es un expert en analyse de marché automobile avec 15 ans d'expérience. 
+                Ta mission est de fournir un contexte RÉEL et PRÉCIS sur les stocks et tendances SUV.
+                
+                RÈGLES CRITIQUES :
+                1. RÉALISME DU STOCK : Tu ne dois JAMAIS inventer un véhicule qui n'est pas dans l'inventaire. Si 'stock_count' est 0, tu dois explicitement signaler que le modèle est INDISPONIBLE.
+                2. VÉRITÉ AVANT TOUT : Si un utilisateur demande un modèle spécifique (ex: Clio 4) et qu'il n'est pas trouvé, ne propose pas de négociation. Informe l'Orchestrateur qu'il n'y a pas de stock.
+                3. CONTEXTE : Fournis un contexte sur les cycles de demande et les opportunités seulement si le véhicule existe réellement en showroom.''',
             tools=[self.search_inventory, self.market_sentiment_analysis, self.get_stock_levels],
         )
         
@@ -76,7 +80,7 @@ class MarketAnalysisAgent(BaseOmegaAgent):
         model: str, 
         brand: str = None, 
         max_price: float = None,
-        category: str = "SUV"
+        category: str = None
     ) -> Dict[str, Any]:
         """
         Task 1: Rechercher les véhicules correspondants dans l'inventaire CSV.
@@ -230,7 +234,7 @@ class MarketAnalysisAgent(BaseOmegaAgent):
         # Exécution des tâches d'analyse en parallèle pour optimiser la vitesse
         import asyncio
         results = await asyncio.gather(
-            self.search_inventory(model, brand, user_budget),
+            self.search_inventory(model, brand, user_budget, category=None),
             self.market_sentiment_analysis(model),
             self.get_stock_levels("SUV")
         )
