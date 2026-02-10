@@ -121,7 +121,7 @@ Return a JSON object with the following structure (use null for missing informat
     "urgency_indicators": ["list of phrases indicating urgency"],
     "service_type": "Buy/Rent/Lease/LLD or null",
     "vehicle_category": "SUV/Sedan/Hatchback/Coupe/Pickup/Van or null",
-    "target_model": "The specific model name mentioned (e.g., 'Clio 4', 'Polo') or null",
+    "model": "specific vehicle model name mentioned (e.g., 'Clio', '3008', 'Duster', 'Golf', 'Sandero') or null",
     "brands": ["list of mentioned brands or empty array"],
     "fuel_type": "Diesel/Gasoline/Hybrid/Electric or null",
     "transmission": "Automatic/Manual or null",
@@ -144,13 +144,30 @@ Return a JSON object with the following structure (use null for missing informat
     }}
 }}
 
+CRITICAL INSTRUCTIONS:
+1. For "model", extract the SPECIFIC model name (Clio, 3008, Duster, etc.), NOT the category
+2. For "brands", use the CURRENT MESSAGE context, not the existing profile brands
+3. Common model-to-brand mappings you should know:
+   - Clio, Sandero, Duster (older), Megane, Captur → Renault
+   - 208, 3008, 2008, 308, 508 → Peugeot  
+   - Duster (current), Sandero Stepway, Spring, Jogger → Dacia
+   - Picasso, C3, C4, C5 → Citroën
+   - Golf, Polo, Tiguan, Passat → Volkswagen
+   - Corolla, Yaris, RAV4 → Toyota
+   - If model is mentioned WITHOUT brand, infer the brand from the model name
+
+EXAMPLES:
+- "Je veux une Clio 4" → brands: ["Renault"], model: "Clio", category: "Hatchback"
+- "Un SUV Duster" → brands: ["Dacia"], model: "Duster", category: "SUV"
+- "3008 budget 300000" → brands: ["Peugeot"], model: "3008", category: "SUV"
+
 Examples of urgency indicators: "urgent", "tomorrow", "asap", "quickly", "now", "this week"
 Examples of sentiment indicators: complaints, excitement, frustration, satisfaction
 Be precise and only extract what is explicitly mentioned or strongly implied.
 """
 
         try:
-            ai_res = await self.agent.arun(analysis_prompt)
+            ai_res = await self.arun(analysis_prompt)
             return self._parse_ai_response(ai_res.content)
         except Exception as e:
             logger.error(f"❌ AI extraction failed: {e}")
@@ -168,9 +185,20 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
         """
         # Get financial metrics from bank data (with fallbacks)
         income = bank_data.get("monthly_income") or existing.income_mad or 0
-        debts = bank_data.get("monthly_debt_payments") or (existing.financials.current_debts_mad if existing.financials else 0)
-        bank_seniority = bank_data.get("bank_seniority_months") or (existing.financials.bank_seniority_months if existing.financials else 0)
-        is_blacklisted = bank_data.get("is_blacklisted") or (existing.financials.is_blacklisted if existing.financials else False)
+        
+        # Ensure debts and other values are not None
+        debts = bank_data.get("monthly_debt_payments")
+        if debts is None:
+            debts = (existing.financials.current_debts_mad if existing.financials else 0) or 0
+            
+        bank_seniority = bank_data.get("bank_seniority_months")
+        if bank_seniority is None:
+            bank_seniority = (existing.financials.bank_seniority_months if existing.financials else 0) or 0
+            
+        is_blacklisted = bank_data.get("is_blacklisted")
+        if is_blacklisted is None:
+            is_blacklisted = (existing.financials.is_blacklisted if existing.financials else False) or False
+            
         contract_type = bank_data.get("contract_type") or (existing.financials.contract_type if existing.financials else None)
         
         # Calculate DTI
@@ -228,7 +256,7 @@ Be precise and only extract what is explicitly mentioned or strongly implied.
             ),
             preferences=Preferences(
                 brands=ai_data.get("brands", []),
-                model=ai_data.get("target_model"),
+                model=ai_data.get("model"),
                 category=ai_data.get("vehicle_category"),
                 fuel_type=ai_data.get("fuel_type"),
                 transmission=ai_data.get("transmission"),

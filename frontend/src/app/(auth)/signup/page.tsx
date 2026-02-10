@@ -14,11 +14,13 @@ export default function SignupPage() {
         full_name: '',
         email: '',
         password: '',
+        phone_number: '',
         city: '',
         income_mad: '',
         max_budget_mad: '',
         brand_preference: '',
         contract_type: 'CDI',
+        preferred_payment: 'Crédit',
         current_debts_mad: '',
         usage: 'Mixte'
     });
@@ -50,12 +52,14 @@ export default function SignupPage() {
                 email: formData.email,
                 password: formData.password,
                 full_name: formData.full_name,
+                phone_number: formData.phone_number,
                 city: formData.city,
                 income_mad: parseFloat(formData.income_mad) || 0,
                 financials: {
                     max_budget_mad: parseFloat(formData.max_budget_mad) || 0,
                     contract_type: formData.contract_type,
-                    current_debts_mad: parseFloat(formData.current_debts_mad) || 0
+                    current_debts_mad: parseFloat(formData.current_debts_mad) || 0,
+                    preferred_payment: formData.preferred_payment
                 },
                 preferences: {
                     brands: formData.brand_preference ? [formData.brand_preference] : [],
@@ -150,6 +154,10 @@ export default function SignupPage() {
                                                 <input name="password" type="password" value={formData.password} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-blue-500 focus:bg-white/10 transition-all" required placeholder="••••••••" />
                                             </div>
                                         </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-white/60 ml-1">Téléphone</label>
+                                            <input name="phone_number" type="text" value={formData.phone_number} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-blue-500 focus:bg-white/10 transition-all" placeholder="0600000000" />
+                                        </div>
                                     </div>
                                 </motion.div>
                             )}
@@ -177,15 +185,25 @@ export default function SignupPage() {
                                                 <input name="current_debts_mad" type="number" value={formData.current_debts_mad} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-purple-500" placeholder="0" />
                                             </div>
                                         </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-white/60 ml-1">Type de Contrat</label>
-                                            <select name="contract_type" value={formData.contract_type} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-purple-500 appearance-none text-white">
-                                                <option value="CDI" className="bg-[#020205]">CDI</option>
-                                                <option value="CDD" className="bg-[#020205]">CDD</option>
-                                                <option value="Fonctionnaire" className="bg-[#020205]">Fonctionnaire</option>
-                                                <option value="Libéral" className="bg-[#020205]">Libéral</option>
-                                                <option value="Privé" className="bg-[#020205]">Auto-Entrepreneur</option>
-                                            </select>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-white/60 ml-1">Type de Contrat</label>
+                                                <select name="contract_type" value={formData.contract_type} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-purple-500 appearance-none text-white">
+                                                    <option value="CDI" className="bg-[#020205]">CDI</option>
+                                                    <option value="CDD" className="bg-[#020205]">CDD</option>
+                                                    <option value="Fonctionnaire" className="bg-[#020205]">Fonctionnaire</option>
+                                                    <option value="Libéral" className="bg-[#020205]">Libéral</option>
+                                                    <option value="Auto-Entrepreneur" className="bg-[#020205]">Auto-Entrepreneur</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-white/60 ml-1">Mode de Paiement</label>
+                                                <select name="preferred_payment" value={formData.preferred_payment} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-purple-500 appearance-none text-white">
+                                                    <option value="Crédit" className="bg-[#020205]">Crédit</option>
+                                                    <option value="Comptant" className="bg-[#020205]">Comptant</option>
+                                                    <option value="LOA/LLD" className="bg-[#020205]">LOA/LLD</option>
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
                                 </motion.div>
@@ -259,11 +277,33 @@ export default function SignupPage() {
                         </div>
                     </form>
 
-                    <div className="mt-8 text-center text-sm text-white/40">
-                        Déjà inscrit&nbsp;?{' '}
-                        <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                            Se connecter
-                        </Link>
+                    <div className="mt-8">
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-white/10"></div>
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="px-2 bg-transparent text-white/40">Ou s&apos;inscrire avec</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-2 gap-4">
+                            <button type="button" className="flex justify-center items-center py-3 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
+                                <img src="https://www.svgrepo.com/show/355037/google.svg" className="h-5 w-5 mr-2 opacity-70 group-hover:opacity-100 transition-opacity" alt="Google" />
+                                <span className="text-white text-sm">Google</span>
+                            </button>
+                            <button type="button" className="flex justify-center items-center py-3 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
+                                <img src="https://www.svgrepo.com/show/448234/linkedin.svg" className="h-5 w-5 mr-2 opacity-70 group-hover:opacity-100 transition-opacity" alt="LinkedIn" />
+                                <span className="text-white text-sm">LinkedIn</span>
+                            </button>
+                        </div>
+
+                        <div className="mt-8 text-center text-sm text-white/40">
+                            Déjà inscrit&nbsp;?{' '}
+                            <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                                Se connecter
+                            </Link>
+                        </div>
                     </div>
                 </GlassCard>
             </div>

@@ -15,6 +15,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 import logging
+import asyncio
 from agno.agent import Agent
 import os
 
@@ -25,6 +26,9 @@ load_dotenv()
 
 # Import des fonctions CSV depuis votre sql_inventory.py
 from ..tools.sql_inventory import check_inventory, get_vehicle_stock_levels, update_demand_metrics, update_vehicle_status, get_csv_statistics
+
+# Configuration du logger
+logger = logging.getLogger(__name__)
 
 
 class MarketAnalysisAgent(BaseOmegaAgent):
@@ -106,11 +110,13 @@ class MarketAnalysisAgent(BaseOmegaAgent):
         # Appel à la fonction CSV check_inventory
         inventory_data = await check_inventory(search_params)
         
-        # Extraction des données
         stock_count = inventory_data.get("stock_count", 0)
         available_models = inventory_data.get("available_models", [])
         avg_price = inventory_data.get("avg_price", 0)
         
+        if stock_count == 0:
+            logger.warning(f"⚠️ No stock found for model='{model}', brand='{brand}', category='{category}'")
+            
         # Enrichissement de l'analyse
         stock_level = self._evaluate_stock_level(stock_count)
         
@@ -217,7 +223,8 @@ class MarketAnalysisAgent(BaseOmegaAgent):
         self, 
         model: str, 
         brand: str = None, 
-        user_budget: float = None
+        user_budget: float = None,
+        category: str = None
     ) -> Dict[str, Any]:
         """
         Fonction principale: Analyse complète du marché et contexte.
@@ -231,12 +238,13 @@ class MarketAnalysisAgent(BaseOmegaAgent):
             MarketContext complet avec stocks, tendances et recommandations
         """
         
-        # Exécution des tâches d'analyse en parallèle pour optimiser la vitesse
-        import asyncio
+        # Determine category for general stock overview (default to SUV if not specified)
+        category_to_check = category or "SUV"
+        
         results = await asyncio.gather(
             self.search_inventory(model, brand, user_budget, category=None),
             self.market_sentiment_analysis(model),
-            self.get_stock_levels("SUV")
+            self.get_stock_levels(category_to_check)
         )
         
         inventory_result, sentiment_result, stock_levels = results

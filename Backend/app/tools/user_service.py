@@ -212,8 +212,10 @@ async def merge_user_profile(user_id: int, new_data: UserSchema, db: AsyncSessio
             new_pref = new_data.preferences
             old_pref = existing.preferences
             
+            
             merged.preferences = Preferences(
-                brands=merge_list(new_pref.brands if new_pref else None, old_pref.brands if old_pref else None),
+                brands=new_pref.brands if (new_pref and new_pref.brands) else (old_pref.brands if old_pref else []),
+                model=merge_value(new_pref.model if new_pref else None, old_pref.model if old_pref else None),
                 category=merge_value(new_pref.category if new_pref else None, old_pref.category if old_pref else None),
                 fuel_type=merge_value(new_pref.fuel_type if new_pref else None, old_pref.fuel_type if old_pref else None),
                 transmission=merge_value(new_pref.transmission if new_pref else None, old_pref.transmission if old_pref else None),

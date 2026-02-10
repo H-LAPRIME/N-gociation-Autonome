@@ -76,17 +76,19 @@ class CSVInventoryManager:
         
         # Ajouter colonne 'km' (kilométrage) si manquante
         if 'km' not in self.df.columns:
-            # Simuler un kilométrage basé sur l'année
+            # Simuler un kilométrage basé sur l'année (Version vectorisée rapide)
+            import numpy as np
             current_year = datetime.now().year
-            def estimate_km(row):
-                year = row.get('year', 2015)
-                try:
-                    y = int(year)
-                except:
-                    y = 2015
-                age = max(1, current_year - y)
-                return age * 15000 + (hash(str(row.get('modele', ''))) % 10000)
-            self.df['km'] = self.df.apply(estimate_km, axis=1)
+            
+            # Conversion robuste de l'année vers le numérique
+            years = pd.to_numeric(self.df['year'], errors='coerce').fillna(2015)
+            ages = (current_year - years).clip(lower=1)
+            
+            # Génération de bruit aléatoire stable
+            np.random.seed(42)  # Pour la cohérence
+            noise = np.random.randint(0, 10000, size=len(self.df))
+            
+            self.df['km'] = (ages * 15000 + noise).astype(int)
             
         # Calculer un prix estimé basé sur l'année et la marque
         self.df['prix_estime'] = self._estimate_price(self.df)
@@ -100,12 +102,11 @@ class CSVInventoryManager:
     
     def _estimate_price(self, df: pd.DataFrame) -> pd.Series:
         """
-        Estimer le prix basé sur l'année et la marque.
-        Prix de base + ajustement selon marque + dépréciation par année.
+        Estimer le prix basé sur l'année et la marque (Version vectorisée rapide).
         """
         current_year = datetime.now().year
         
-        # Prix de base par marque (en MAD - Dirham Marocain)
+        # Prix de base par marque
         brand_base_prices = {
             'mercedes-benz': 350000, 'bmw': 330000, 'audi': 320000,
             'porsche': 700000, 'bentley': 1500000, 'jaguar': 400000,
@@ -118,33 +119,17 @@ class CSVInventoryManager:
             'mini': 280000, 'volvo': 350000
         }
         
-        # Utiliser la vectorisation pandas au lieu de iterrows()
-        def calculate_price(row):
-            brand = str(row['mark']).lower()
-            year = row['year']
-            
-            # Prix de base selon la marque
-            base_price = brand_base_prices.get(brand, 150000)
-            
-            # Gérer les années spéciales
-            try:
-                year_val = int(year) if not isinstance(year, int) else year
-            except (ValueError, TypeError):
-                year_val = 2010 # Default for invalid years
-            
-            if year_val < 1980:
-                year_val = 1980
-            
-            # Dépréciation: -7% par an depuis année en cours
-            current_year = datetime.now().year
-            years_old = max(0, current_year - year_val)
-            depreciation = 1 - (years_old * 0.07)
-            depreciation = max(0.1, min(1.0, depreciation))  # Entre 10% et 100%
-            
-            return round(base_price * depreciation, 2)
+        # 1. Obtenir les prix de base de manière vectorisée
+        base_prices = df['mark'].str.lower().str.strip().map(brand_base_prices).fillna(150000)
         
-        # Appliquer la fonction de manière vectorisée
-        return df.apply(calculate_price, axis=1)
+        # 2. Calculer l'âge de manière vectorisée
+        years = pd.to_numeric(df['year'], errors='coerce').fillna(2010).clip(lower=1980)
+        years_old = (current_year - years).clip(lower=0)
+        
+        # 3. Appliquer la dépréciation
+        depreciation = (1 - (years_old * 0.07)).clip(lower=0.1, upper=1.0)
+        
+        return (base_prices * depreciation).round(2)
     
     def _categorize_vehicle(self, model: str) -> str:
         """Catégoriser le véhicule selon son modèle."""
@@ -275,15 +260,47 @@ async def check_inventory(search_params: dict) -> Dict[str, Any]:
         
         # Filtre marque (brand)
         if brand and isinstance(brand, str) and brand.strip():
+            b_norm = brand.strip().lower()
             filtered_df = filtered_df[
-                filtered_df['mark'].str.lower().str.contains(brand.strip().lower(), na=False)
+                filtered_df['mark'].str.lower().str.contains(b_norm, na=False)
             ]
+            logger.info(f"🔍 Filtered by brand '{b_norm}': {len(filtered_df)} matches")
         
         # Filtre modèle (model)
         if model and isinstance(model, str) and model.strip():
-            filtered_df = filtered_df[
-                filtered_df['modele'].str.lower().str.contains(model.strip().lower(), na=False)
-            ]
+            m_norm = model.strip().lower()
+            
+            # Extract year from model name if present (e.g. "Clio 4 2012")
+            import re
+            year_match = re.search(r'\b(19|20)\d{2}\b', m_norm)
+            if year_match:
+                extracted_year = year_match.group(0)
+                m_norm = m_norm.replace(extracted_year, "").strip()
+                # Apply year filter if we found one and CSV has 'year' column
+                if 'year' in filtered_df.columns:
+                    try:
+                        # Convert column to string for flexible year matching
+                        filtered_df = filtered_df[filtered_df['year'].astype(str).str.contains(extracted_year)]
+                    except:
+                        pass
+            
+            # Remove brand name if it's in the model name
+            if brand and brand.lower() in m_norm:
+                m_norm = m_norm.replace(brand.lower(), "").strip()
+            
+            if m_norm and m_norm != "suv":
+                # More robust matching:
+                # 1. Exact match
+                # 2. CSV model is in user query (e.g. "Sandero" in "Sandero Stepway")
+                # 3. User query is in CSV model (e.g. "Clio" in "Clio IV")
+                
+                def flexible_match(row_model):
+                    rm = str(row_model).lower()
+                    return m_norm in rm or rm in m_norm
+                
+                filtered_df = filtered_df[filtered_df['modele'].apply(flexible_match)]
+                
+            logger.info(f"🔍 Filtered by model '{m_norm}': {len(filtered_df)} matches")
         
         # Filtre de recherche globale (query)
         query = search_params.get("query")

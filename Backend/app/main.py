@@ -65,34 +65,48 @@ async def root():
 # --- AUTHENTICATION ENDPOINTS ---
 
 @app.post("/auth/signup")
-async def signup(user: UserCreate):
+async def signup(user: UserCreate, db = Depends(get_async_db)):
     """Register a new user and return an access token."""
     try:
-        new_user = auth_service.create_user(user)
-        access_token = auth_service.create_access_token(data={"sub": new_user["user_id"]})
+        new_user = await auth_service.create_user(user, db)
+        access_token = auth_service.create_access_token(data={"sub": new_user.user_id})
         return {
             "success": True, 
             "message": "User created successfully", 
             "access_token": access_token, 
             "token_type": "bearer",
-            "user": {k: v for k, v in new_user.items() if k != "hashed_password"}
+            "user": {
+                "user_id": new_user.user_id,
+                "email": new_user.email,
+                "full_name": new_user.full_name,
+                "username": new_user.username,
+                "city": new_user.city,
+                "income_mad": new_user.income_mad
+            }
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/auth/login")
-async def login(user: UserLogin):
-    authenticated_user = auth_service.authenticate_user(user)
+async def login(user: UserLogin, db = Depends(get_async_db)):
+    authenticated_user = await auth_service.authenticate_user(user, db)
     if not authenticated_user:
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     
-    access_token = auth_service.create_access_token(data={"sub": authenticated_user["user_id"]})
+    access_token = auth_service.create_access_token(data={"sub": authenticated_user.user_id})
     return {
         "success": True, 
         "message": "Login successful", 
         "access_token": access_token, 
         "token_type": "bearer",
-        "user": {k: v for k, v in authenticated_user.items() if k != "hashed_password"}
+        "user": {
+            "user_id": authenticated_user.user_id,
+            "email": authenticated_user.email,
+            "full_name": authenticated_user.full_name,
+            "username": authenticated_user.username,
+            "city": authenticated_user.city,
+            "income_mad": authenticated_user.income_mad
+        }
     }
 
 @app.get("/user/profile")
@@ -125,7 +139,7 @@ async def update_user_profile(
             user_id=current_user["user_id"],
             username=current_user.get("username", ""),
             email=current_user.get("email", ""),
-            full_name=current_user.get("full_name", ""),
+            full_name=user_update.get("full_name", current_user.get("full_name", "")),
             phone_number=user_update.get("phone_number"),
             city=user_update.get("city"),
             income_mad=user_update.get("income_mad", 0),

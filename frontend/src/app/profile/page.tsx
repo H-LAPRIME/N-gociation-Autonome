@@ -20,10 +20,23 @@ export default function ProfilePage() {
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Record<string, any>>({
         full_name: '',
+        email: '',
+        phone_number: '',
         city: '',
         income_mad: 0,
-        financials: { max_budget_mad: 0 },
-        preferences: { brands: [], category: '' }
+        financials: {
+            max_budget_mad: 0,
+            contract_type: 'CDI',
+            current_debts_mad: 0,
+            preferred_payment: 'Crédit'
+        },
+        preferences: {
+            brands: [],
+            category: '',
+            fuel_type: '',
+            transmission: '',
+            usage: ''
+        }
     });
     const [saving, setSaving] = useState(false);
 
@@ -35,14 +48,22 @@ export default function ProfilePage() {
                 setUser(data);
                 setFormData({
                     full_name: data.full_name || '',
+                    email: data.email || '',
+                    phone_number: data.phone_number || '',
                     city: data.city || '',
                     income_mad: data.income_mad || 0,
                     financials: {
-                        max_budget_mad: data.financials?.max_budget_mad || 0
+                        max_budget_mad: data.financials?.max_budget_mad || 0,
+                        contract_type: data.financials?.contract_type || 'CDI',
+                        current_debts_mad: data.financials?.current_debts_mad || 0,
+                        preferred_payment: data.financials?.preferred_payment || 'Crédit'
                     },
                     preferences: {
                         brands: data.preferences?.brands || [],
-                        category: data.preferences?.category || ''
+                        category: data.preferences?.category || '',
+                        fuel_type: data.preferences?.fuel_type || '',
+                        transmission: data.preferences?.transmission || '',
+                        usage: data.preferences?.usage || ''
                     }
                 });
             } catch (err) {
@@ -60,11 +81,7 @@ export default function ProfilePage() {
             await userService.updateUserProfile(formData);
             const updatedProfile = { ...user, ...formData };
             setUser(updatedProfile);
-            updateUser({
-                full_name: formData.full_name,
-                city: formData.city,
-                income_mad: formData.income_mad
-            });
+            updateUser(formData);
             setIsEditing(false);
         } catch (err) {
             alert("Erreur lors de la mise à jour");
@@ -222,6 +239,45 @@ export default function ProfilePage() {
                                     )}
                                 </div>
                                 <div className="space-y-2">
+                                    <label className="text-sm text-white/60 ml-1">Téléphone</label>
+                                    {isEditing ? (
+                                        <input
+                                            type="text"
+                                            value={formData.phone_number}
+                                            onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all"
+                                            placeholder="Ex: 0600000000"
+                                        />
+                                    ) : (
+                                        <div className="bg-white/5 border border-transparent rounded-xl px-4 py-3 text-white">
+                                            {user?.phone_number || 'Non spécifié'}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm text-white/60 ml-1">Type de Contrat</label>
+                                    {isEditing ? (
+                                        <select
+                                            value={formData.financials.contract_type}
+                                            onChange={(e) => setFormData({
+                                                ...formData,
+                                                financials: { ...formData.financials, contract_type: e.target.value }
+                                            })}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all appearance-none"
+                                        >
+                                            <option value="CDI">CDI</option>
+                                            <option value="CDD">CDD</option>
+                                            <option value="Fonctionnaire">Fonctionnaire</option>
+                                            <option value="Libéral">Libéral</option>
+                                            <option value="Auto-Entrepreneur">Auto-Entrepreneur</option>
+                                        </select>
+                                    ) : (
+                                        <div className="bg-white/5 border border-transparent rounded-xl px-4 py-3 text-white">
+                                            {user?.financials?.contract_type || 'CDI'}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="space-y-2">
                                     <label className="text-sm text-white/60 ml-1">Revenu Mensuel (DH)</label>
                                     {isEditing ? (
                                         <input
@@ -275,9 +331,92 @@ export default function ProfilePage() {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-sm text-white/60 ml-1">Catégorie</label>
-                                        <div className="bg-white/5 border border-transparent rounded-xl px-4 py-3 text-white">
-                                            {user?.preferences?.category || 'Non spécifié'}
-                                        </div>
+                                        {isEditing ? (
+                                            <select
+                                                value={formData.preferences.category}
+                                                onChange={(e) => setFormData({
+                                                    ...formData,
+                                                    preferences: { ...formData.preferences, category: e.target.value }
+                                                })}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none"
+                                            >
+                                                <option value="">Non spécifié</option>
+                                                <option value="Citadine">Citadine</option>
+                                                <option value="Berline">Berline</option>
+                                                <option value="SUV">SUV / 4x4</option>
+                                                <option value="Utilitaire">Utilitaire</option>
+                                            </select>
+                                        ) : (
+                                            <div className="bg-white/5 border border-transparent rounded-xl px-4 py-3 text-white">
+                                                {user?.preferences?.category || 'Non spécifié'}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-white/60 ml-1">Carburant</label>
+                                        {isEditing ? (
+                                            <select
+                                                value={formData.preferences.fuel_type}
+                                                onChange={(e) => setFormData({
+                                                    ...formData,
+                                                    preferences: { ...formData.preferences, fuel_type: e.target.value }
+                                                })}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none"
+                                            >
+                                                <option value="">Non spécifié</option>
+                                                <option value="Diesel">Diesel</option>
+                                                <option value="Essence">Essence</option>
+                                                <option value="Hybride">Hybride</option>
+                                                <option value="Électrique">Électrique</option>
+                                            </select>
+                                        ) : (
+                                            <div className="bg-white/5 border border-transparent rounded-xl px-4 py-3 text-white">
+                                                {user?.preferences?.fuel_type || 'Non spécifié'}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-white/60 ml-1">Boîte de Vitesse</label>
+                                        {isEditing ? (
+                                            <select
+                                                value={formData.preferences.transmission}
+                                                onChange={(e) => setFormData({
+                                                    ...formData,
+                                                    preferences: { ...formData.preferences, transmission: e.target.value }
+                                                })}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none"
+                                            >
+                                                <option value="">Non spécifié</option>
+                                                <option value="Manuelle">Manuelle</option>
+                                                <option value="Automatique">Automatique</option>
+                                            </select>
+                                        ) : (
+                                            <div className="bg-white/5 border border-transparent rounded-xl px-4 py-3 text-white">
+                                                {user?.preferences?.transmission || 'Non spécifié'}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm text-white/60 ml-1">Usage Principal</label>
+                                        {isEditing ? (
+                                            <select
+                                                value={formData.preferences.usage}
+                                                onChange={(e) => setFormData({
+                                                    ...formData,
+                                                    preferences: { ...formData.preferences, usage: e.target.value }
+                                                })}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none"
+                                            >
+                                                <option value="Trajet travail">Trajet travail</option>
+                                                <option value="Famille">Famille</option>
+                                                <option value="Loisirs">Loisirs / Route</option>
+                                                <option value="Mixte">Mixte</option>
+                                            </select>
+                                        ) : (
+                                            <div className="bg-white/5 border border-transparent rounded-xl px-4 py-3 text-white">
+                                                {user?.preferences?.usage || 'Non spécifié'}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

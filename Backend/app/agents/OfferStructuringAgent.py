@@ -16,14 +16,8 @@ class OfferStructuringAgent(BaseOmegaAgent):
                 "Generate a unique Contract ID in the format OMEGA-YYYYMMDD-XXXX.",
                 "Structure the final JSON to include user details, vehicle details, financial breakdown, and the marketing message from the negotiator.",
                 "",
-                "CRITICAL STEP:",
-                "Before returning the final JSON, you MUST call the 'generate_offer_pdf' tool with a summary of the offer.",
-                "Store the returned 'pdf_url' in the 'pdf_reference' field of your output.",
-                "",
-                "OUTPUT:",
-                "Return a JSON object matching the StructuredOffer schema."
             ],
-            tools=[generate_offer_pdf]
+            tools=[] # Disabled tool use to prevent large JSON argument errors. PDF is generated manually in structure_offer.
         )
 
     async def structure_offer(self, consolidated_data: Dict[str, Any]) -> StructuredOffer:

@@ -1,8 +1,12 @@
 from typing import Dict, Any, Optional, List
 import json
+import re
+import logging
 from .base import BaseOmegaAgent
 from app.schemas.negotiation import NegotiatedTerms
 from app.schemas.negotiation_session import NegotiationSession
+
+logger = logging.getLogger(__name__)
 
 
 class NegotiationAgent(BaseOmegaAgent):
@@ -71,10 +75,70 @@ class NegotiationAgent(BaseOmegaAgent):
         }}
         """
         
-        response = await self.arun(prompt)
-        content = getattr(response, "content", None) or getattr(response, "output_text", str(response))
         
-        return self._parse_negotiation_response(content)
+        try:
+            response = await self.arun(prompt)
+            content = getattr(response, "content", None) or getattr(response, "output_text", str(response))
+            
+            # Check if the response is an error object (API might return error as content)
+            if isinstance(content, dict) and content.get("object") == "error":
+                error_msg = content.get("message", "Unknown error")
+                error_type = content.get("type", "unknown")
+                logger.error(f"❌ API returned error: {error_type} - {error_msg}")
+                
+                # Raise exception to trigger retry logic in base.py
+                if "rate" in error_type.lower() or "rate limit" in error_msg.lower():
+                    raise Exception(f"Rate limit exceeded: {error_msg}")
+                else:
+                    raise Exception(f"API error: {error_msg}")
+            
+            # If content is string, check if it contains error JSON
+            if isinstance(content, str):
+                content_lower = content.lower()
+                if '"object":"error"' in content_lower or '"type":"rate_limited"' in content_lower or "rate limit exceeded" in content_lower:
+                    # Try to extract JSON if it's embedded in text
+                    try:
+                        # First try direct load in case it is valid JSON
+                        error_data = json.loads(content)
+                    except json.JSONDecodeError:
+                        # Try to find JSON block
+                        import re
+                        match = re.search(r"(\{.*\})", content, re.DOTALL)
+                        if match:
+                            try:
+                                error_data = json.loads(match.group(1))
+                            except:
+                                error_data = {}
+                        else:
+                            error_data = {}
+                    
+                    # Check if extracted data is an error
+                    if error_data.get("object") == "error" or "rate limit" in content_lower:
+                        error_msg = error_data.get("message", "Rate limit error detected in content")
+                        logger.error(f"❌ API error in response: {error_msg}")
+                        raise Exception(f"Rate limit exceeded: {error_msg}")
+
+            try:
+                return self._parse_negotiation_response(content)
+            except Exception as parse_error:
+                # If parsing fails, check if it looked like an error response that we missed
+                if "rate limit" in str(getattr(response, "content", "")).lower() or "429" in str(getattr(response, "content", "")).lower():
+                     logger.warning("Parsing failed on what looks like a rate limit error. Treating as rate limit.")
+                     raise Exception("Rate limit exceeded (detected during parsing)")
+                raise parse_error
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            error_msg = str(e).lower()
+            
+            # If rate limit error persists after retries, provide a fallback offer
+            if "rate limit" in error_msg or "429" in error_msg or "rate_limited" in error_msg:
+                logger.error(f"❌ Rate limit persists after retries. Generating fallback offer.")
+                return self._generate_fallback_offer(user_data, valuation_data, market_data)
+            else:
+                # For other errors, re-raise
+                raise
 
     async def process_counter_offer(
         self,
@@ -196,11 +260,88 @@ class NegotiationAgent(BaseOmegaAgent):
             json_str = re.sub(r'[\x00-\x1f]', '', json_str)
             
             data = json.loads(json_str, strict=False)
+            
+            # Check if the parsed data is actually an error object
+            if isinstance(data, dict) and (data.get("object") == "error" or data.get("type") == "rate_limited"):
+                error_msg = data.get("message", "Unknown API Error")
+                raise Exception(f"API returned error object instead of terms: {error_msg}")
+                
             return NegotiatedTerms(**data)
         except Exception as e:
             safe_content = content.encode('ascii', 'ignore').decode('ascii')
             print(f"Parsing failed: {e}. Raw content snippet: {safe_content[:200]}...")
             raise
+    
+    def _generate_fallback_offer(
+        self,
+        user_data: Dict[str, Any],
+        valuation_data: Dict[str, Any],
+        market_data: Dict[str, Any]
+    ) -> NegotiatedTerms:
+        """
+        Generate a basic fallback offer when API is unavailable.
+        Uses simple business logic instead of LLM.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("🔧 Generating fallback offer using business logic")
+        
+        # Extract data with safe defaults
+        user_budget = user_data.get('max_budget_mad', 200000)
+        preferences = user_data.get('preferences', {})
+        brands = preferences.get('brands', [])
+        
+        # Get market price
+        market_price = market_data.get('inventory', {}).get('avg_market_price', 180000)
+        if market_price == 0:
+            market_price = user_budget * 0.9  # Fallback to 90% of budget
+        
+        # Calculate offer with conservative discount (5%)
+        discount_percentage = 0.05
+        discount_amount = market_price * discount_percentage
+        offer_price = market_price - discount_amount
+        
+        # Trade-in value
+        trade_in_value = valuation_data.get('estimated_value', None)
+        trade_in_year = valuation_data.get('year', None)
+        
+        # Monthly payment (assuming 60 months at 5% interest)
+        if user_data.get('preferred_payment') == 'financing':
+            principal = offer_price - (trade_in_value or 0)
+            monthly_rate = 0.05 / 12  # 5% annual
+            num_months = 60
+            monthly_payment = principal * (monthly_rate * (1 + monthly_rate)**num_months) / ((1 + monthly_rate)**num_months - 1)
+        else:
+            monthly_payment = None
+        
+        # Build fallback offer
+        brand_str = brands[0] if brands else "ce véhicule"
+        
+        return NegotiatedTerms(
+            offer_price_mad=round(offer_price, 2),
+            discount_amount_mad=round(discount_amount, 2),
+            trade_in_value_mad=round(trade_in_value, 2) if trade_in_value else None,
+            trade_in_year=trade_in_year,
+            monthly_payment_mad=round(monthly_payment, 2) if monthly_payment else None,
+            payment_method=user_data.get('preferred_payment', 'Cash'),
+            persuasion_points=[
+                f"Prix compétitif pour {brand_str}",
+                "Remise incluse dans cette offre",
+                "Plusieurs options de financement disponibles" if monthly_payment else "Paiement comptant accepté",
+                "Garantie constructeur incluse"
+            ],
+            marketing_message=(
+                f"Nous sommes ravis de vous présenter notre offre pour {brand_str}. "
+                f"Nous offrons une remise de {round(discount_amount)} MAD, "
+                f"pour un prix final de {round(offer_price)} MAD. "
+                + (f"Avec votre reprise estimée à {round(trade_in_value)} MAD, " if trade_in_value else "")
+                + (f"vos mensualités seraient d'environ {round(monthly_payment)} MAD sur 60 mois. " if monthly_payment else "")
+                + "N'hésitez pas à nous faire part de vos questions!"
+            ),
+            leverage_used="market_price_competitive",
+            flexibility_level="Medium"
+        )
 
     # Keep backward compatibility with old method
     async def negotiate(

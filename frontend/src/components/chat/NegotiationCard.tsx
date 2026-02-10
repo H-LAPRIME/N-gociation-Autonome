@@ -112,6 +112,16 @@ export const NegotiationCard: React.FC<NegotiationCardProps> = ({
     const isRejected = status === 'rejected';
     const isMaxRounds = status === 'max_rounds_reached';
 
+    // Construct PDF URL safely
+    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api').replace('/api', '');
+    const pdfPath = currentOffer.pdf_reference || currentOffer.pdf_url;
+    const pdfUrl = pdfPath ? `${apiUrl}${pdfPath}` : '#';
+
+    if (isCompleted) {
+        console.log("Offer Completed. PDF Path:", pdfPath);
+        console.log("Full PDF URL:", pdfUrl);
+    }
+
     return (
         <div className="w-full max-w-2xl mx-auto my-4 bg-[#0a0a0c]/60 border border-white/10 rounded-[2rem] overflow-hidden relative transition-all duration-500 backdrop-blur-none">
             {/* Header */}
@@ -274,12 +284,13 @@ export const NegotiationCard: React.FC<NegotiationCardProps> = ({
                         <Check size={18} /> Offre Acceptée
                     </p>
                     <a
-                        href={`${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api').replace('/api', '')}${currentOffer.pdf_reference || currentOffer.pdf_url}`}
+                        href={pdfUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-white/70 underline mt-1 block hover:text-white transition-colors"
+                        className={`text-xs text-white/70 underline mt-1 block hover:text-white transition-colors ${!pdfPath ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+                        onClick={(e) => !pdfPath && e.preventDefault()}
                     >
-                        Télécharger le contrat (PDF)
+                        {pdfPath ? 'Télécharger le contrat (PDF)' : 'Génération du contrat en cours...'}
                     </a>
                 </div>
             )}

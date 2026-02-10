@@ -13,7 +13,6 @@ from app.database.negotiation_db import negotiation_db
 from app.database.chat_db import chat_db
 from app.schemas.negotiation_session import NegotiationSessionCreate
 from app.schemas.chat_session import ChatMessage
-from app.services.auth_service import get_user_by_id
 from app.db_config import get_async_db
 
 # Configure logging
@@ -54,85 +53,99 @@ class OrchestratorAgent:
         start_time = time.time()
         logger.info(f"🚀 ORCHESTRATION START | Query: {user_query[:100]}")
         
-        # Initialize profile state
-        profile_state = user_profile_state or {}
+        # 0. Early Intent Heuristic & Rapid Greeting Response
+        # Detect if this is just a social interaction to bypass slow agent pipelines
+        intent = self._classify_intent_heuristic(user_query, history)
         
-        # Long-term Memory: Restore missing fields from historical sessions in data/negotiations
-        profile_state = self._restore_profile_from_history(user_id, profile_state)
+        # Rapid handling for very simple greetings (Instant response)
+        greeting_keywords = ["hi", "hello", "bonjour", "salut", "hey", "bonsoir", "coucou", "ca va", "ça va", "merci"]
+        query_words = user_query.lower().strip().split()
+        is_simple_greeting = any(keyword in user_query.lower() for keyword in greeting_keywords) and len(query_words) <= 4
         
-        # Identity Awareness: Fetch and merge data from the registered profile (users.json)
-        profile_state = self._enrich_with_persisted_profile(user_id, profile_state)
+        if is_simple_greeting:
+            logger.info("⚡ Rapid Response: Simple greeting detected")
+            username = (user_profile_state or {}).get('full_name') or "cher client"
+            
+            # Use templates for instant response
+            if any(w in user_query.lower() for w in ["hi", "hello", "bonjour", "bonsoir"]):
+                chat_message = f"Bonjour {username} ! Je suis OMEGA. Comment puis-je vous accompagner aujourd'hui ? 🚗"
+            elif "salut" in user_query.lower() or "coucou" in user_query.lower():
+                chat_message = f"Salut {username} ! Ravi de vous voir. En quoi puis-je vous être utile ? ✨"
+            elif "va" in user_query.lower():
+                chat_message = f"Je vais très bien, merci {username} ! Toujours prêt à vous aider à trouver votre prochaine voiture. Et vous ? 😊"
+            else:
+                chat_message = f"Je vous en prie {username} ! Je reste à votre disposition pour toute question. 👍"
+            
+            return await self._save_and_return(session_id, {
+                "status": "success",
+                "chat_response": chat_message,
+                "intent": "GREETING",
+                "profile_completion": self._calculate_profile_completion(user_profile_state or {})
+            })
+
+        # 1. Initialize/Merge profile state using Database-integrated UserProfileAgent
+        # (This is only done if the intent is not an instant greeting)
+        step_start = time.time()
+        user_profile = None
+        async for db in get_async_db():
+            user_profile = await self.user_agent.assess_fiscal_health(
+                user_id=user_id,
+                user_input=user_query,
+                db=db
+            )
+            break
+            
+        if not user_profile:
+            logger.warning("⚠️ Database profile assessment failed, using provided state")
+            profile_state = user_profile_state or {}
+        else:
+            profile_state = user_profile.model_dump()
+            profile_state['profil_extraction'] = {
+                "city": user_profile.city,
+                "monthly_income": user_profile.income_mad,
+                "contract_type": user_profile.financials.contract_type if user_profile.financials else None,
+                "vehicle_preferences": user_profile.preferences.model_dump() if user_profile.preferences else {},
+                "trade_in_vehicle_details": user_profile.trade_in.model_dump() if user_profile.trade_in else {}
+            }
         
-        # Check if this is an auto-negotiation trigger
+        logger.info(f"👤 User profile assessment & DB sync completed ({time.time() - step_start:.2f}s)")
+
+        # Redo intent if it was None (ambiguous) but now we have more profile context
+        if intent is None:
+            intent = self._classify_intent_heuristic(user_query, history)
+            if not intent:
+                # Still ambiguous? Short LLM call
+                try:
+                    classification_prompt = f"Analyze intent: '{user_query}'. Return 'TRANSACTION' or 'GENERAL'."
+                    class_res = await self.user_agent.arun(classification_prompt)
+                    intent = "GENERAL" if "GENERAL" in str(class_res.content).upper() else "TRANSACTION"
+                except Exception as e:
+                    logger.warning(f"⚠️ Intent classification failed after retries: {e}")
+                    intent = "GENERAL"  # Safe default
+            logger.info(f"🎯 Final Intent: {intent}")
+
+        # Check if this is an auto-negotiation trigger (e.g. from form submission)
         if "[AUTO_NEGOTIATE]" in user_query:
             logger.info("⚡ AUTO-NEGOTIATION detected")
             return await self._handle_auto_negotiation(user_id, user_query, history, profile_state)
         
-        logger.info(f"📊 Profile state: {profile_state}")
-        
-        # 2. Detect if user mentions trade-in OR if we are already in trade-in flow
+        # 2. Detect if user mentions trade-in or if we already have it
         step_start = time.time()
         trade_in_explicit = await self._detect_trade_in_mention(user_query)
-        
-        # Check if we have partial trade-in data in the profile
         existing_trade_in = profile_state.get('profil_extraction', {}).get('trade_in_vehicle_details', {})
         trade_in_detected = trade_in_explicit or (bool(existing_trade_in) and any(existing_trade_in.values()))
         
-        logger.info(f"🔍 Trade-in detection: Explicit={trade_in_explicit} | Context={bool(existing_trade_in)} => {trade_in_detected} ({time.time() - step_start:.2f}s)")
-        
-        # 3. Extract profile information FIRST (to be reactive in the same turn)
-        step_start = time.time()
-        # Find which field is CURRENTLY missing to help extraction
-        _, current_missing, _ = self._check_profile_completion(profile_state, user_query)
-        extracted_profile_data = await self._extract_profile_from_message(user_query, current_missing)
-        logger.info(f"📝 Extracted data: {extracted_profile_data} ({time.time() - step_start:.2f}s)")
-        
-        # Merge extracted data into current profile_state for immediate use in completion check
-        if extracted_profile_data.get('profil_extraction'):
-            if 'profil_extraction' not in profile_state:
-                profile_state['profil_extraction'] = {}
-            # Deep merge simple fields
-            for k, v in extracted_profile_data['profil_extraction'].items():
-                if v: # Only update if we found something
-                    profile_state['profil_extraction'][k] = v
-        
-        # 4. NOW check profile completion with the updated state
+        # 3. Check profile completion with the updated state
         step_start = time.time()
         profile_complete, missing_field, next_question = self._check_profile_completion(profile_state, user_query)
         logger.info(f"✅ Profile complete: {profile_complete} | Missing: {missing_field} ({time.time() - step_start:.2f}s)")
-        
-        # 5. Query Classification & Routing
-        step_start = time.time()
-        
-        try:
-            # Fast Path: Heuristic Classification
-            intent = self._classify_intent_heuristic(user_query, history)
-            
-            if not intent:
-                # Slow Path: LLM Fallback (only if ambiguous)
-                classification_prompt = f"""
-                Analyze current message and history to determine intent.
-                History: {json.dumps(history[-3:] if history else [], default=str)}
-                Current Query: "{user_query}"
-                
-                Is this a car transaction request (buy, sell, trade-in, estimate price)? 
-                Return "TRANSACTION" or "GENERAL".
-                """
-                class_res = await self.user_agent.agent.arun(classification_prompt)
-                intent = "GENERAL" if "GENERAL" in str(class_res.content).upper() else "TRANSACTION"
-                
-            logger.info(f"🎯 Intent classified: {intent} ({time.time() - step_start:.2f}s)")
-        except Exception as e:
-            logger.error(f"❌ Error during intent classification: {e}", exc_info=True)
-            intent = "GENERAL"  # Default to general if classification fails
-            logger.info(f"🎯 Intent defaulted to: {intent}")
         
         # 5. Handle different intents
         try:
             if trade_in_detected:
                 logger.info("🔍 Entering trade-in handling block")
                 # User mentioned trade-in, check if we have enough data
-                extracted_data = extracted_profile_data.get('profil_extraction', {})
+                extracted_data = profile_state.get('profil_extraction', {})
                 trade_in_details = extracted_data.get('trade_in_vehicle_details', {})
                 
                 # Check completeness of trade-in data
@@ -147,7 +160,7 @@ class OrchestratorAgent:
                     logger.info("✅ Complete trade-in data detected - Auto-negotiating")
                     
                     # Build enriched query for auto-negotiation
-                    auto_neg_query = f"[AUTO_NEGOTIATE] Client veut acheter. Profil: {json.dumps(profile_state, default=str)} | Reprise: {json.dumps(trade_in_details, default=str)} | Préférences: {json.dumps(extracted_data.get('vehicle_preferences', {}), default=str)}"
+                    auto_neg_query = f"[AUTO_NEGOTIATE] Client veut acheter. Profil: {json.dumps(profile_state, default=str)} | Reprise: {json.dumps(trade_in_details, default=str)}"
                     
                     return await self._save_and_return(session_id, await self._handle_auto_negotiation(user_id, auto_neg_query, history, profile_state, session_id=session_id))
                 
@@ -174,7 +187,7 @@ class OrchestratorAgent:
                             "type": "ASK_TRADE_IN_QUESTION",
                             "missing_fields": missing_trade_in_fields
                         },
-                        "profile_data_extracted": extracted_profile_data,
+                        "profile_data_extracted": profile_state,
                         "intent": "TRADE_IN_INQUIRY"
                     })
                 
@@ -186,7 +199,7 @@ class OrchestratorAgent:
                         "ui_action": {
                             "type": "SHOW_TRADE_IN"
                         },
-                        "profile_data_extracted": extracted_profile_data,
+                        "profile_data_extracted": profile_state,
                         "intent": "TRADE_IN"
                     })
             
@@ -209,7 +222,7 @@ class OrchestratorAgent:
                 else:
                     # Advanced conversational response (handles off-topic and identity)
                     # Fetch persisted info for identity awareness
-                    persisted_user = get_user_by_id(user_id) or {}
+                    persisted_user = profile_state
                     
                     chat_prompt = f"""
                     Tu es OMEGA, l'assistant commercial privilégié d'un showroom automobile au Maroc.
@@ -235,9 +248,13 @@ class OrchestratorAgent:
                     IMPORTANT: Retourne UNIQUEMENT le texte, PAS de JSON.
                     """
 
-                chat_res = await self.user_agent.agent.arun(chat_prompt)
-                raw_content = getattr(chat_res, "content", "Bonjour ! Je suis OMEGA, votre assistant automobile.")
-                chat_message = self._extract_clean_message(raw_content)
+                try:
+                    chat_res = await self.user_agent.arun(chat_prompt)
+                    raw_content = getattr(chat_res, "content", "Bonjour ! Je suis OMEGA, votre assistant automobile.")
+                    chat_message = self._extract_clean_message(raw_content)
+                except Exception as e:
+                    logger.error(f"❌ General chat response failed: {e}")
+                    chat_message = "Bonjour ! Je suis OMEGA. Comment puis-je vous aider aujourd'hui ?"
 
                 # If profile is NOT complete, append a gentle reminder
                 if not profile_complete:
@@ -252,7 +269,7 @@ class OrchestratorAgent:
                 return await self._save_and_return(session_id, {
                     "status": "success",
                     "chat_response": chat_message,
-                    "profile_data_extracted": extracted_profile_data,
+                    "profile_data_extracted": profile_state,
                     "profile_completion": self._calculate_profile_completion(profile_state),
                     "intent": "GREETING" if is_simple_greeting else "GENERAL"
                 })
@@ -261,7 +278,7 @@ class OrchestratorAgent:
             elif not profile_complete:
                 # Force profile question for transactional intents
                 prefix = "C'est noté pour votre projet ! "
-                car_details = extracted_profile_data.get('profil_extraction', {}).get('vehicle_preferences', {})
+                car_details = profile_state.get('profil_extraction', {}).get('vehicle_preferences', {})
                 if car_details.get('model'):
                     prefix = f"Excellente idée pour la {car_details.get('model')} ! "
                 
@@ -274,7 +291,7 @@ class OrchestratorAgent:
                         "type": "ASK_PROFILE_QUESTION",
                         "field_to_collect": missing_field
                     },
-                    "profile_data_extracted": extracted_profile_data,
+                    "profile_data_extracted": profile_state,
                     "profile_completion": self._calculate_profile_completion(profile_state),
                     "intent": "PROFILE_BUILDING"
                 })
@@ -389,7 +406,7 @@ class OrchestratorAgent:
         """
         
         try:
-            chat_res = await self.user_agent.agent.arun(chat_prompt)
+            chat_res = await self.user_agent.arun(chat_prompt)
             raw_content = getattr(chat_res, "content", str(chat_res))
             
             # Extract clean message using helper method
@@ -496,60 +513,6 @@ class OrchestratorAgent:
         
         return True, None, None
     
-    async def _extract_profile_from_message(self, user_query: str, expected_field: str = None) -> Dict:
-        """Extract profile and trade-in information from user's message using LLM."""
-        extraction_prompt = f"""
-        Analyse le message de l'utilisateur et extrait toutes les informations pertinentes pour un showroom automobile.
-        Message: "{user_query}"
-        
-        Retourne UNIQUEMENT un JSON structuré comme suit :
-        {{
-            "profil_extraction": {{
-                "city": "nom de ville ou null",
-                "monthly_income": "montant numérique ou null",
-                "contract_type": "CDI/CDD/Fonctionnaire/etc ou null",
-                "vehicle_preferences": {{
-                    "brands": ["Peugeot", etc],
-                    "model": "3008",
-                    "category": "SUV/Berline/etc"
-                }},
-                "trade_in_vehicle_details": {{
-                    "brand": "Marque du véhicule actuel",
-                    "model": "Modèle du véhicule actuel",
-                    "year": "Année (entier)",
-                    "mileage": "Kilométrage (entier)",
-                    "condition": "Excellent/Bon/Moyen"
-                }}
-            }}
-        }}
-        
-        Sois précis et n'extrait que ce qui est explicitement mentionné ou fortement suggéré.
-        """
-        
-        try:
-            res = await self.user_agent.agent.arun(extraction_prompt)
-            content = getattr(res, "content", "{}")
-            
-            # Parse JSON response
-            import re
-            if "{" in content:
-                match = re.search(r"(\{.*\})", content, re.DOTALL)
-                if match:
-                    extracted = json.loads(match.group(1))
-                    
-                    # Recursive function to remove none/null values
-                    def remove_none(obj):
-                        if isinstance(obj, dict):
-                            return {k: v for k, v in ((k, remove_none(v)) for k, v in obj.items()) if v is not None}
-                        elif isinstance(obj, list):
-                            return [v for v in (remove_none(v) for v in obj) if v is not None]
-                        return obj
-
-                    return remove_none(extracted)
-        except:
-            pass
-        
-        return {}
     
     def _calculate_profile_completion(self, profile_state: Dict) -> int:
         """Calculate profile completion percentage."""
@@ -570,24 +533,19 @@ class OrchestratorAgent:
             step_start = time.time()
             logger.info(f"🔍 Assessing user profile for user_id={user_id}")
             
-            try:
-                # Pass both query and current state to assessment agent
-                async for db in get_async_db():
-                    user_profile = await self.user_agent.assess_fiscal_health(
-                        user_id=user_id,
-                        user_input=user_query,
-                        db=db
-                    )
-                    break 
-                #! user_profile = await self.user_agent.assess_fiscal_health(user_id, user_query, current_profile_data=profile_state)
-                logger.info(f"👤 User profile assessed ({time.time() - step_start:.2f}s)")
-            except Exception as e:
-                logger.error(f"❌ Error assessing user profile: {e}", exc_info=True)
-                return {
-                    "status": "error",
-                    "chat_response": "Désolé, une erreur est survenue lors de l'analyse de votre profil. Veuillez réessayer.",
-                    "intent": "ERROR"
-                }
+            user_profile = None
+            async for db in get_async_db():
+                user_profile = await self.user_agent.assess_fiscal_health(
+                    user_id=user_id,
+                    user_input=user_query,
+                    db=db
+                )
+                break
+            
+            if not user_profile:
+                raise Exception("Failed to retrieve or create user profile in DB")
+
+            logger.info(f"👤 User profile assessed ({time.time() - step_start:.2f}s)")
             
             # 2 & 3. Run Valuation and Market Analysis
             step_start = time.time()
@@ -606,9 +564,10 @@ class OrchestratorAgent:
             
             brand = user_profile.preferences.brands[0] if user_profile.preferences.brands else None
             if brand or user_profile.preferences.category or user_profile.preferences.model:
-                logger.info(f"📈 Adding market analysis task for: {brand or user_profile.preferences.model or user_profile.preferences.category}")
+                search_model = user_profile.preferences.model or user_profile.preferences.category or "Voiture"
+                logger.info(f"📈 Adding market analysis task for: {brand or search_model}")
                 tasks.append(self.market_agent.analyze_market(
-                    model=user_profile.preferences.model or user_profile.preferences.category or "SUV",
+                    model=search_model,
                     brand=brand,
                     user_budget=user_profile.financials.max_budget_mad
                 ))
@@ -640,7 +599,14 @@ class OrchestratorAgent:
                 # Use NegotiationAgent to generate a polite out-of-stock message if possible, 
                 # or just return a standard one.
                 target_model = market_data.get('target_model', 'ce modèle')
-                chat_response = f"Je suis sincèrement désolé, mais après vérification de notre inventaire en temps réel, la {target_model} n'est plus disponible actuellement dans notre showroom. Nous recevons régulièrement de nouveaux arrivages, mais pour l'instant, je ne peux pas vous proposer d'offre sur ce véhicule précis. Souhaitez-vous voir nos autres SUV disponibles ?"
+                target_brand = market_data.get('target_brand')
+                category_name = market_data.get('market_overview', {}).get('category', 'véhicules')
+                
+                # Check if it was a generic "SUV" query and we have nothing
+                if target_model.lower() == "suv" or not target_brand:
+                    chat_response = "Je suis sincèrement désolé, mais nous n'avons actuellement aucun véhicule correspondant à vos critères dans notre showroom. Nous recevons régulièrement de nouveaux arrivages. Souhaitez-vous voir nos modèles les plus populaires ?"
+                else:
+                    chat_response = f"Je suis sincèrement désolé, mais après vérification de notre inventaire en temps réel, nous n'avons pas la {target_brand} {target_model} disponible actuellement. Cependant, nous avons d'autres {category_name} qui pourraient vous intéresser. Souhaitez-vous explorer des alternatives ?"
                 
                 return {
                     "status": "success",
@@ -812,110 +778,6 @@ class OrchestratorAgent:
         # 5. Ambiguous -> Return None to trigger LLM fallback
         return None
 
-    def _restore_profile_from_history(self, user_id: int, current_state: Dict) -> Dict:
-        """
-        Look into historical sessions in data/negotiations to fill missing profile fields.
-        """
-        # Fields we want to restore
-        required_fields = ["city", "monthly_income", "contract_type"]
-        
-        # Ensure 'profil_extraction' exists in state
-        if 'profil_extraction' not in current_state:
-            current_state['profil_extraction'] = {}
-            
-        extraction = current_state['profil_extraction']
-        missing = [f for f in required_fields if not extraction.get(f)]
-        
-        if not missing:
-            return current_state
-            
-        logger.info(f"🧠 Attempting to restore {missing} from history for user {user_id}")
-        
-        try:
-             # Load all sessions
-             sessions = negotiation_db._load_sessions()
-             user_sessions = [s for s in sessions.values() if s.get('user_id') == user_id]
-             
-             # Sort by creation date (newest first)
-             user_sessions.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-             
-             for session in user_sessions:
-                 # 1. Look in initial_offer_data.user_profile (Preferred source)
-                 offer_data = session.get('initial_offer_data', {})
-                 profile = offer_data.get('user_profile', {})
-                 
-                 # 2. Look in financials if profile is sparse
-                 financials = profile.get('financials', {})
-                 
-                 # Robust Mapping
-                 mappings = {
-                     'city': profile.get('city') or offer_data.get('city'),
-                     'monthly_income': profile.get('income_mad') or financials.get('income_mad') or financials.get('monthly_income'),
-                     'contract_type': financials.get('contract_type') or profile.get('contract_type')
-                 }
-                 
-                 # Fill missing
-                 for field in list(missing):
-                     val = mappings.get(field)
-                     if val is not None and val != "":
-                         current_state['profil_extraction'][field] = val
-                         missing.remove(field)
-                         logger.info(f"✨ Restored {field}: {val} (from session {session.get('session_id')})")
-                         
-                 if not missing:
-                     break
-                     
-        except Exception as e:
-            logger.error(f"❌ Error restoring profile from history: {e}")
-            
-        return current_state
-
-    def _enrich_with_persisted_profile(self, user_id: int, current_state: Dict) -> Dict:
-        """
-        Fetch the user's registered profile from users.json and fill missing fields in profile_state.
-        This provides identity awareness from the moment the user registers.
-        """
-        try:
-            user = get_user_by_id(user_id)
-            if not user:
-                return current_state
-            
-            # Ensure 'profil_extraction' exists in state
-            if 'profil_extraction' not in current_state:
-                current_state['profil_extraction'] = {}
-                
-            extraction = current_state['profil_extraction']
-            
-            # Map fields from the registered profile to the expected extraction keys
-            # Only fill if the field is currently missing or null
-            if not extraction.get('city') and user.get('city'):
-                extraction['city'] = user.get('city')
-                logger.info(f"📍 Profile Enrich: Restored city from registered profile: {user.get('city')}")
-                
-            if not extraction.get('monthly_income') and user.get('income_mad'):
-                extraction['monthly_income'] = user.get('income_mad')
-                logger.info(f"💰 Profile Enrich: Restored income from registered profile: {user.get('income_mad')}")
-                
-            financials = user.get('financials', {})
-            if not extraction.get('contract_type') and financials.get('contract_type'):
-                extraction['contract_type'] = financials.get('contract_type')
-                logger.info(f"📄 Profile Enrich: Restored contract_type from registered profile: {financials.get('contract_type')}")
-                
-            # Preferences can also be merged
-            prefs = user.get('preferences', {})
-            if 'vehicle_preferences' not in extraction:
-                extraction['vehicle_preferences'] = {}
-            
-            v_prefs = extraction['vehicle_preferences']
-            if not v_prefs.get('brands') and prefs.get('brands'):
-                v_prefs['brands'] = prefs.get('brands')
-            if not v_prefs.get('usage') and prefs.get('usage'):
-                v_prefs['usage'] = prefs.get('usage')
-
-        except Exception as e:
-            logger.error(f"❌ Error enriching profile from users.json: {e}")
-            
-        return current_state
 
     async def _save_and_return(self, session_id: Optional[str], result: Dict[str, Any]) -> Dict[str, Any]:
         """Helper to persist bot response and return result."""

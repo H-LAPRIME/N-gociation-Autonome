@@ -13,8 +13,13 @@ interface User {
     user_id: number;
     email: string;
     full_name: string;
+    username: string;
     city?: string;
     income_mad?: number;
+    phone_number?: string;
+    financials?: any;
+    preferences?: any;
+    trade_in?: any;
 }
 
 interface AuthContextType {

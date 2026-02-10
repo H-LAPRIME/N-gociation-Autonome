@@ -27,7 +27,7 @@ class ValuationAgent(BaseOmegaAgent):
             ]
         )
 
-    def appraise_vehicle(self, car_json: dict) -> dict:
+    async def appraise_vehicle(self, car_json: dict) -> dict:
         """
         Rule-based evaluation of vehicle condition.
         
@@ -67,7 +67,7 @@ class ValuationAgent(BaseOmegaAgent):
             state += 1
 
         # --- Rule 3: Accidents ---
-        accidents = car_json.get("accidents", 0)
+        accidents = car_json.get("accidents") or 0  # Handle None
         if accidents >= 3:
             state -= 2
         elif accidents == 2:
@@ -76,14 +76,14 @@ class ValuationAgent(BaseOmegaAgent):
             state -= 0  # minor effect
 
         # --- Rule 4: Maintenance ---
-        maintenance = car_json.get("maintenance", "regular").lower()
+        maintenance = (car_json.get("maintenance") or "regular").lower()
         if maintenance == "poor":
             state -= 2
         elif maintenance == "irregular":
             state -= 1
 
         # --- Rule 5: Number of Owners ---
-        owners = car_json.get("owners", 1)
+        owners = car_json.get("owners") or 1  # Handle None
         if owners > 3:
             state -= 2
         elif owners == 3:

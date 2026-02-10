@@ -111,6 +111,27 @@ export default function LoginPage() {
                             </>
                         )}
                     </button>
+                    <div className="mt-8">
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-white/10"></div>
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="px-2 bg-transparent text-white/40">Ou continuer avec</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-2 gap-4">
+                            <button type="button" className="flex justify-center items-center py-3 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
+                                <img src="https://www.svgrepo.com/show/355037/google.svg" className="h-5 w-5 mr-2 opacity-70 group-hover:opacity-100 transition-opacity" alt="Google" />
+                                <span className="text-white text-sm">Google</span>
+                            </button>
+                            <button type="button" className="flex justify-center items-center py-3 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
+                                <img src="https://www.svgrepo.com/show/448234/linkedin.svg" className="h-5 w-5 mr-2 opacity-70 group-hover:opacity-100 transition-opacity" alt="LinkedIn" />
+                                <span className="text-white text-sm">LinkedIn</span>
+                            </button>
+                        </div>
+                    </div>
                 </form>
 
                 <div className="mt-8 text-center text-sm text-white/40">
